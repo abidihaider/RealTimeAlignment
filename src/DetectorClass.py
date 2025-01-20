@@ -52,7 +52,7 @@ class DetectorClass(TimeClass):
     # that specific the starting position and startNor
     def setStartPosAndNor(self, position, normal, rotation):
         self.startPos = position
-        self.startNor = normal;
+        self.startNor = normal/np.linalg.norm(normal);
         self.rotAroundNor = rotation
 
         self.currPos = self.startPos
@@ -111,4 +111,50 @@ class DetectorClass(TimeClass):
         # right now return just the truth position, but we can add sources of error here
         return localTruthPoint
 
+    # Rodrigues' rotation formula to rotate a vector around an axis
+    def rotateVectorAroundAxis(self, v, k, theta):
+        vRot = v * math.cos(theta) + np.cross(k, v) * math.sin(theta) + k * (np.dot(k, v)) * (1 - math.cos(theta))
+        return vRot
+
+    # Get the normal decomposition into different vectors
+    def getCurrNorDecomposition(self):
+        currNorm = self.getCurrNor()
+
+        c1 = currNorm[0]
+        c2 = currNorm[1]
+        c3 = currNorm[2]
+
+        ## This comes from mathematica math... sorry
+        if(currNorm[2] == 0):
+            a1 = 1
+            a2 = -(c1/c2)
+            a3 = 0
+            b1 = 0
+            b2 = -((b1*c1)/c2)
+            b3 = a3*b1 - c2
+        else:
+            a2 = 0
+            a3 = (-c1 - a2*c2)/c3
+            a1 = 1
+
+            b1 = 0
+            b2 = a2*b1 + c3
+            b3 = (-b1*c1 - a2*b1*c2 - c2*c3)/c3
+
+        AVec = np.array([a1, a2, a3])        
+        BVec = np.array([b1, b2, b3])   
+
+        AVec = AVec/np.linalg.norm(AVec)
+        BVec = BVec/np.linalg.norm(BVec)
+        CVec = np.cross(AVec, BVec)
+        CVec = CVec/np.linalg.norm(CVec)
+
+        AVec = self.rotateVectorAroundAxis(AVec, self.getCurrNor(), self.getCurrRot())
+        BVec = self.rotateVectorAroundAxis(BVec, self.getCurrNor(), self.getCurrRot())
+
+
+        assert np.array_equal(currNorm, CVec)
+
+
+        return [AVec, BVec]
 
