@@ -12,6 +12,7 @@ import src.MisalignmentFuncs as MisalignmentFuncs
 import numpy as np
 import json
 import random 
+import math
 
 
 import argparse
@@ -145,7 +146,11 @@ def main():
             outputEvntData[key]["globalTruthPoint"] = globalTruthPoint.tolist()
             outputEvntData[key]["truthDetectorPos"] = detector.getCurrPos().tolist()
             outputEvntData[key]["truthDetectorNor"] = detector.getCurrNor().tolist()
+            detectorVec = detector.getCurrNorDecomposition()
+            outputEvntData[key]["truthDetectorVec1"] = detectorVec[0].tolist()
+            outputEvntData[key]["truthDetectorVec2"] = detectorVec[1].tolist()
             outputEvntData[key]["truthDetectorRotat"] = detector.getCurrRot()
+
 
             # print (globalTruthPoint, localTruthPoint, localRecoBin)
 
