@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 import numpy as np
 
-from detector import Detector
-from particle import RandomParticle
+from rtal.data.detector import Detector
+from rtal.data.particle import RandomParticle
 
 
 def generate_one(config, output_folder, fname):
