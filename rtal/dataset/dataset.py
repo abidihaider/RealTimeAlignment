@@ -10,9 +10,16 @@ class ROMDataset(Dataset):
     """
     Dataset API for loading the toy-detector dataset
     """
-    def __init__(self, data_root, num_particles):
+    def __init__(self, data_root, num_particles, split=None):
+
         super().__init__()
-        self.fnames = list(Path(data_root).glob('*npz'))
+
+        data_root = Path(data_root)
+
+        if split is not None:
+            data_root = data_root/split
+
+        self.fnames = list(data_root.glob('*npz'))
         self.fnames = sorted(self.fnames, key=lambda fname: int(fname.stem.split('_')[-1]))
         self.num_particles = num_particles
 
