@@ -1,0 +1,27 @@
+checkpointing:
+    checkpoint_path: ./checkpoints
+    save_frequency: 10
+    resume: true
+model:
+    input_features: 6
+    query_features: 27
+    num_seeds: 4
+    num_rounds: 6
+    d_model: 128
+    num_heads: 4
+train:
+    num_epochs: 100
+    num_warmup_epochs: 20
+    batch_size: 4
+    # if batches_per_epoch is null, float('inf')
+    # will be used.
+    learning_rate: 0.001
+    # Weight decay used in AdamW optimizer
+    weight_decay: 0.01
+    # The steps for every decrease of learning rate.
+    # We will be using MultiStepLR scheduler,
+    # and we will multiply the learning rate by a
+    # sched_gamma < 1 every sched_steps after
+    # num_warmup_epochs is reached.
+    sched_steps: 20
+    sched_gamma: .95
