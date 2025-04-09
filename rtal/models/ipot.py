@@ -126,14 +126,14 @@ class InducedPointFeaturizer(nn.Module):
     Main module for inducing point-based feature
     extraction with cross-attention.
     """
-    def __init__(self, 
-                 input_features, 
-                 query_features, 
-                 num_seeds, 
-                 num_rounds, 
-                 d_model, 
+    def __init__(self,
+                 input_features,
+                 query_features,
+                 num_seeds,
+                 num_rounds,
+                 d_model,
                  num_heads):
-        
+
         super().__init__()
 
         # Embedding layer to project input features to d_model dimension
@@ -160,8 +160,8 @@ class InducedPointFeaturizer(nn.Module):
         self.decoder = nn.MultiheadAttention(embed_dim   = d_model,
                                              num_heads   = num_heads,
                                              batch_first = True)
-        
-        self.output_layer = nn.Sequential(nn.ReLU(), 
+
+        self.output_layer = nn.Sequential(nn.ReLU(),
                                           nn.Linear(d_model, query_features))
 
     def forward(self, data, query, key_padding_mask):
@@ -185,5 +185,5 @@ class InducedPointFeaturizer(nn.Module):
 
         # Apply decoder attention between query and latent representation
         output, _ = self.decoder(query, latent, latent)
-        
+
         return self.output_layer(output)
