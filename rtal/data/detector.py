@@ -143,32 +143,28 @@ class Detector:
 
         return local_coords, in_range_mask
 
-    def __bin(self, local_points, rounded):
+    def __bin(self, local_points):
         """
         bin according to the sensor pitch
         """
         readout = local_points / np.array([self._PITCH_X, self._PITCH_Y])
 
-        if rounded:
-            readout = readout.round()
-
         return readout
 
-    def get_readout(self, particles, state, rounded=False):
+    def get_readout(self, particles, state):
         """
         Get detector readout
         """
 
         global_points, ray_mask = self.__intersect(particles, state)
         local_points, in_range_mask = self.__to_local_coordinates(global_points, state)
-        readout = self.__bin(local_points, rounded=rounded)
+        readout = self.__bin(local_points)
 
         # sanity check
-        if not rounded:
-            diff = np.abs(self.to_global(readout, state) - global_points).max()
-            assert diff < self._EPS, \
-                ('maximum difference between recovered and ground-truth '
-                 f'intersection points ({diff}) exceeds {self._EPS}.')
+        diff = np.abs(self.to_global(readout, state) - global_points).max()
+        assert diff < self._EPS, \
+            ('maximum difference between recovered and ground-truth '
+             f'intersection points ({diff}) exceeds {self._EPS}.')
 
         # A valid read-out can only be made by a ray that hits
         # the detector in the range of the detector.

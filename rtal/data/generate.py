@@ -48,14 +48,10 @@ def generate_one(config, output_folder, fname):
     mask = np.ones(num_particles, dtype=bool)
     readout_start = []
     readout_curr  = []
-    rounded = config['dataset']['rounded']
     for detector in detectors:
-        rd_start, mask_start = detector.get_readout(particles,
-                                                    state   = 'start',
-                                                    rounded = rounded)
-        rd_curr,  mask_curr  = detector.get_readout(particles,
-                                                    state   = 'curr',
-                                                    rounded = rounded)
+        rd_start, mask_start = detector.get_readout(particles, state = 'start')
+        rd_curr,  mask_curr  = detector.get_readout(particles, state = 'curr')
+
         readout_start.append(rd_start)
         readout_curr.append(rd_curr)
         mask &= mask_start & mask_curr
@@ -64,16 +60,25 @@ def generate_one(config, output_folder, fname):
     readout_curr = np.stack([item[mask] for item in readout_curr])
 
     # == save =================================================================
+    # detector parameters
     dt_params = [detector.get_parameters() for detector in detectors]
-    np.savez_compressed(
-        output_folder/fname,
-        detector_start     = np.stack([param['start'] for param in dt_params]),
-        detector_curr      = np.stack([param['curr'] for param in dt_params]),
-        readout_start      = readout_start,
-        readout_curr       = readout_curr,
-        particle_vertex    = particles.vertex[mask],
-        particle_direction = particles.direction[mask]
-    )
+    detector_start = np.stack([param['start'] for param in dt_params])
+    detector_curr  = np.stack([param['curr'] for param in dt_params])
+    # result dict for npz
+    result_dict = {
+        'detector_start'     : detector_start,
+        'detector_curr'      : detector_curr,
+        'particle_vertex'    : particles.vertex[mask],
+        'particle_direction' : particles.direction[mask],
+        'readout_start_cont' : readout_start,
+        'readout_curr_cont'  : readout_curr
+    }
+    # add rounded readout if requested
+    if config['dataset']['rounded']:
+        result_dict['readout_start_rounded'] = np.round(readout_start)
+        result_dict['readout_curr_rounded']  = np.round(readout_curr)
+    # save to npz
+    np.savez_compressed(output_folder/fname, **result_dict)
 
 
 def generate_dataset(num_samples, config_fname, output_folder):
