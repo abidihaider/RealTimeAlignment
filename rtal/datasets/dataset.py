@@ -89,29 +89,31 @@ class ROMDataset(Dataset):
 def to_cloud(readout):
     """
     Input:
-        - readout shape (batch_size, num_dets, num_points, 2)
+        - readout shape (batch_size, num_particles, num_dets, 2)
     output
-        - shape (batch_size, num_dets * num_points, 3)
+        - shape (batch_size, num_dets * num_particles, 3)
     """
+
     device = readout.device
-    batch_size, num_dets, num_points = readout.shape[:-1]
+
+    batch_size, num_particles, num_dets = readout.shape[:-1]
     # det_ids = [1, 2, ..., num_dets]
     det_ids = torch.arange(1, num_dets + 1, device=device)
-    # det_ids: (num_dets,) -> (num_dets * num_points,)
-    # -> (num_dets * num_points, 1)
-    # -> (batch_size, num_dets * num_points, 1)
-    det_ids = det_ids.repeat_interleave(num_points)\
+    # det_ids: (num_dets,) -> (num_dets * num_particles,)
+    # -> (num_dets * num_particles, 1)
+    # -> (batch_size, num_dets * num_particles, 1)
+    det_ids = det_ids.repeat_interleave(num_particles)\
                      .unsqueeze(-1)\
-                     .expand(batch_size, num_dets * num_points, 1)
+                     .expand(batch_size, num_dets * num_particles, 1)
     return torch.cat([det_ids, readout.flatten(start_dim=1, end_dim=2)], dim=-1)
 
 
 def to_track(readout):
     """
     Input:
-        - readout shape (batch_size, num_dets, num_points, 2)
+        - readout shape (batch_size, num_dets, num_particles, 2)
     output
-        - shape (batch_size, num_points, num_dets * 2)
+        - shape (batch_size, num_particles, num_dets * 2)
     """
     return readout.transpose(1, 2).flatten(start_dim=-2, end_dim=-1)
 
@@ -127,7 +129,7 @@ if __name__ == '__main__':
             print(f'== {mode} ==========')
             dataset = ROMDataset(root,
                                  mode=mode,
-                                 num_particles=3)
+                                 num_particles=1)
             dataloader = DataLoader(dataset, batch_size=2)
 
             for sample in dataloader:
