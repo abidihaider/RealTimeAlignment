@@ -1,0 +1,25 @@
+data:
+    mode: raw
+    num_particles: 50
+checkpointing:
+    checkpoint_path: /home/yhuang2/PROJs/RealTimeAlignment/train/mlp_v2/checkpoints/test
+    save_frequency: 10
+    resume: true
+model:
+    in_features: 6
+    out_features: 27
+    embedding_features: [128, 128]
+    subset_config:
+        - [5, 128, 128, 128]
+        - [5, 128, 128, 128]
+    sine_factor: 1
+    rezero: true
+    use_sine_init: false
+    randperm: true
+train:
+    num_epochs: 200
+    num_warmup_epochs: 50
+    batch_size: 32
+    learning_rate: 0.0001
+    sched_steps: 20
+    sched_gamma: .95
