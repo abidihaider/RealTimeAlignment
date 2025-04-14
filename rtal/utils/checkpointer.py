@@ -6,12 +6,17 @@ import torch
 
 
 class Checkpointer:
+    """
+    Checkpointing the model and optionally optimizer and scheduler
+    """
+    # pylint: disable=too-many-arguments
     def __init__(self,
-                 model,
-                 checkpoint_path,
-                 save_frequency=None,
-                 model_prefix='model',
-                 submodel_names=None):
+                 model, *,
+                 optimizer       = None,
+                 scheduler       = None,
+                 checkpoint_path ='./',
+                 save_frequency  = None,
+                 prefix          = 'ckpt'):
         """
         Description:
             Save and load checkpoints.
@@ -29,6 +34,10 @@ class Checkpointer:
             - model_prefix: the prefix used for save the full model
         """
         self.model = model
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+
+        self.prefix = prefix
 
         self.checkpoint_path = Path(checkpoint_path)
         self.checkpoint_path.mkdir(parents=True, exist_ok=True)
@@ -38,33 +47,27 @@ class Checkpointer:
 
         self.save_frequency = save_frequency
 
-        self.submodel_names = [] if submodel_names is None else submodel_names
-
-        if model_prefix is None:
-            self.model_prefix = 'model'
-        else:
-            self.model_prefix = model_prefix
-
-        if self.submodel_names:
-            assert self.model_prefix not in self.submodel_names, \
-                ("Full model prefix ({self.model_prefx}) should "
-                 "not be in submodel names ({self.submodel_names})!")
-
     def __save(self, suffix):
         """
         Save (sub)model checkpoints.
         """
-        model_pth = self.checkpoint_path/f'{self.model_prefix}_{suffix}.pth'
-        torch.save(self.model.state_dict(), model_pth)
+        model_path = self.checkpoint_path/f'{self.prefix}_{suffix}.path'
+        # assert not model_path.exists(), \
+        #     f'{model_path} already exists, refuse to overwrite'
 
-        for submodel_name in self.submodel_names:
-            submodel = getattr(self.model, submodel_name)
-            submodel_pth = self.checkpoint_path/f'{submodel_name}_{suffix}.pth'
-            torch.save(submodel.state_dict(), submodel_pth)
+        # checkpoint dictionary
+        checkpoint = {'model': self.model.state_dict()}
+
+        if self.optimizer:
+            checkpoint['optimizer'] = self.optimizer.state_dict()
+        if self.scheduler:
+            checkpoint['scheduler'] = self.scheduler.state_dict()
+
+        torch.save(checkpoint, model_path)
 
     def save(self, epoch):
         """
-        Save the latest and every save_frequency pths.
+        Save the latest and every save_frequency paths.
         """
 
         self.__save(suffix='last')
@@ -75,7 +78,7 @@ class Checkpointer:
             if epoch % self.save_frequency == 0:
                 self.__save(suffix=epoch)
 
-    def load(self, epoch='last', prefix=None):
+    def load(self, epoch='last', prefix=None, device='cuda'):
         """
         Epoch should be a positive integer or the string 'last'
         """
@@ -94,16 +97,29 @@ class Checkpointer:
             print('Train from scratch')
             return 0
 
-        prefix = self.model_prefix if prefix is None else prefix
+
+        prefix = self.prefix if prefix is None else prefix
 
         # Load a checkpoint
-        model_pth = self.checkpoint_path/f'{prefix}_{epoch}.pth'
+        model_path = self.checkpoint_path/f'{prefix}_{epoch}.path'
 
-        assert model_pth.exists(), \
-            f'Requested checkpoint {str(model_pth)} does not exist!'
+        assert model_path.exists(), \
+            f'Requested checkpoint {str(model_path)} does not exist!'
 
-        print(f'Load model {str(model_pth)}')
+        print(f'Load model {str(model_path)}')
 
-        self.model.load_state_dict(torch.load(model_pth))
+        checkpoint = torch.load(model_path, map_location=device)
+
+        self.model.load_state_dict(checkpoint['model'])
+        if self.optimizer is not None:
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+        if self.scheduler is not None:
+            self.scheduler.load_state_dict(checkpoint['scheduler'])
+
+        # make sure all tensors are on the same device
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
 
         return last_saved_epoch if epoch == 'last' else epoch
