@@ -7,14 +7,15 @@ def assemble(num_features,
              num_subset_solvers,
              subset_size,
              subset_solver_depth,
-             rezero):
+             rounded):
 
     model_config = {
         'embedding_features': [num_features, num_features],
         'subset_config': [[subset_size] + [num_features] * subset_solver_depth] * num_subset_solvers,
-        'rezero': rezero
     }
-    return model_config
+    data_config = {'rounded': rounded}
+    return {'model': model_config,
+            'data': data_config}
 
 
 def make_name(mydict):
@@ -45,7 +46,8 @@ def main():
 
     for i, (update, job_name) in enumerate(updates):
         config = config_template.copy()
-        config['model'].update(update)
+        for key, val in update.items():
+            config[key].update(val)
 
         job_path = job_root/job_name
         job_path.mkdir(parents=True, exist_ok=True)
