@@ -1,0 +1,33 @@
+checkpointing:
+  checkpoint_path: ./checkpoints
+  resume: true
+  save_frequency: 10
+data:
+  mode: raw
+  num_particles: 50
+  rounded: true
+model:
+  embedding_features:
+  - 256
+  - 256
+  in_features: 6
+  out_features: 27
+  randperm: true
+  rezero: true
+  sine_factor: 1
+  subset_config:
+  - &id001
+    - 2
+    - 256
+    - 256
+    - 256
+  - *id001
+  - *id001
+  use_sine_init: false
+train:
+  batch_size: 64
+  learning_rate: 0.0001
+  num_epochs: 200
+  num_warmup_epochs: 50
+  sched_gamma: 0.95
+  sched_steps: 20
