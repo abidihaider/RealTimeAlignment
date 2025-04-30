@@ -6,7 +6,6 @@ import os
 import argparse
 from tqdm import tqdm
 from pathlib import Path
-from pprint import pprint
 import yaml
 import pandas as pd
 
