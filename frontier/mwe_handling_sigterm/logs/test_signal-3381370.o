@@ -1,0 +1,21 @@
+Starting loop. Waiting for SIGTERM...
+Current Time: 12:20:51
+Current Time: 12:20:56
+Current Time: 12:21:01
+Current Time: 12:21:06
+Current Time: 12:21:11
+Current Time: 12:21:16
+Current Time: 12:21:21
+Current Time: 12:21:26
+Current Time: 12:21:31
+Current Time: 12:21:36
+Current Time: 12:21:41
+Current Time: 12:21:46
+Current Time: 12:21:51
+Current Time: 12:21:56
+Current Time: 12:22:01
+Current Time: 12:22:06
+Current Time: 12:22:11
+Bash trap caught SIGTERM — forwarding to child
+Script finished.
+SIGTERM received! Time is almost up. Wrapping up...
