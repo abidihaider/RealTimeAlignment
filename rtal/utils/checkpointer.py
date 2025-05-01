@@ -97,7 +97,6 @@ class Checkpointer:
             print('Train from scratch')
             return 0
 
-
         prefix = self.prefix if prefix is None else prefix
 
         # Load a checkpoint
@@ -111,15 +110,17 @@ class Checkpointer:
         checkpoint = torch.load(model_path, map_location=device)
 
         self.model.load_state_dict(checkpoint['model'])
+        self.model.to(device)
+
         if self.optimizer is not None:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
+            # make sure all tensors are on the same device
+            for state in self.optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
+
         if self.scheduler is not None:
             self.scheduler.load_state_dict(checkpoint['scheduler'])
-
-        # make sure all tensors are on the same device
-        for state in self.optimizer.state.values():
-            for k, v in state.items():
-                if isinstance(v, torch.Tensor):
-                    state[k] = v.to(device)
 
         return last_saved_epoch if epoch == 'last' else epoch
