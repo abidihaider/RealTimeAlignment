@@ -33,8 +33,7 @@ def model_config(config_grid):
 
 def main():
 
-    job_root = Path('job_root')
-    job_root.mkdir(parents=True, exist_ok=True)
+    jobs_per_folder = 24
 
     with open('config_template.yaml', 'r') as handle:
         config_template = yaml.safe_load(handle)
@@ -45,11 +44,15 @@ def main():
     updates = model_config(config_grid)
 
     for i, (update, job_name) in enumerate(updates):
+        if i % jobs_per_folder == 0:
+            job_root = Path(f'../frontier/job_roots/job_root_{i // jobs_per_folder}')
+            job_root.mkdir(parents=True, exist_ok=True)
+
         config = config_template.copy()
         for key, val in update.items():
             config[key].update(val)
 
-        job_path = job_root/job_name
+        job_path = job_root/f'mlp|{job_name}'
         job_path.mkdir(parents=True, exist_ok=True)
 
         with open(job_path/'config.yaml', 'w') as handle:

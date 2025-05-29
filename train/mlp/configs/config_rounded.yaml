@@ -3,7 +3,7 @@ data:
     num_particles: 50
     rounded: true
 checkpointing:
-    checkpoint_path: /home/yhuang2/PROJs/RealTimeAlignment/train/mlp/checkpoints/rounded
+    checkpoint_path: ./checkpoints/rounded
     save_frequency: 10
     resume: true
 model:

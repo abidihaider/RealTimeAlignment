@@ -6,7 +6,6 @@ import os
 import argparse
 from tqdm import tqdm
 from pathlib import Path
-from pprint import pprint
 import yaml
 import pandas as pd
 
@@ -204,7 +203,7 @@ def train():
     # Calculate model size
     model_size = count_parameters(model) / (1024 ** 2)
 
-    print(f'model size: {model_size:.2f}MB')
+    print(f'model size: {model_size:.4f}MB')
     with open(Path(checkpoint_path)/'model_size.dat', 'w', encoding='utf-8') as handle:
         handle.write(f'model_size_MB,{model_size:.2f}')
 
@@ -225,6 +224,7 @@ def train():
 
     # data loader
     data_root = get_data_root()
+
     num_particles   = config['data']['num_particles']
     rounded_readout = config['data']['rounded']
 

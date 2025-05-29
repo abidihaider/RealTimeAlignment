@@ -3,7 +3,7 @@ data:
     num_particles: 50
 checkpointing:
     checkpoint_path: ./checkpoints
-    save_frequency: 10
+    save_frequency: 20
     resume: true
 model:
     in_features: 6
