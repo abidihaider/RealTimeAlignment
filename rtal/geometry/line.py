@@ -78,7 +78,8 @@ def calc_triangle_ineq_residual(points, averaged=True):
 def calc_least_square_residual(points,
                                particle_vertex,
                                particle_direction,
-                               averaged=True):
+                               averaged=True,
+                               return_closest_points=False):
     """
     Description:
         Given a line and a set of points and then compute the residual
@@ -90,20 +91,41 @@ def calc_least_square_residual(points,
     """
     device = points.device
     # displacements: (batch_size, num_particles, num_detectors, 3)
-    displacements = points - particle_vertex.unsqueeze(-2).to(device)
+
+    # vertex: (batch_size, num_particles, 3)
+    #      -> (batch_size, num_particles, 1, 3)
+    vertex = particle_vertex.unsqueeze(-2).to(device)
+    displacements = points - vertex
     # directions: (batch_size, num_particles, 3)
-    directions = particle_direction / torch.linalg.norm(particle_direction, dim=-1, keepdim=True)
+    directions = (particle_direction
+                  / torch.linalg.norm(particle_direction, dim=-1, keepdim=True)).to(device)
     # time: (batch_size, num_particles, num_detectors)
     time = torch.einsum('btij,btj->bti', displacements, directions.to(device))
 
-    # residual: (batch_size, num_particles, 3)
-    residual = (displacements ** 2).sum(-1) - time ** 2
-    # residual is not supposed to be less than zero, but it does sometimes,
-    # probably due to computational precision.
-    residual = torch.clamp(residual, min=0)
+    # closest_points = vertex + time * directions
+    # vertex     : (batch_size, num_particles, 1, 3) +
+    # time       : (batch_size, num_particles, num_detectors)
+    #           -> (batch_size, num_particles, num_detectors, 1)
+    # directions : (batch_size, num_particles, 3)
+    #           -> (batch_size, num_particles, 1, 3)
+    # closest_points: (batch_size, num_particles, num_detectors, 3)
+    closest_points = vertex + time.unsqueeze(-1) * directions.unsqueeze(-2)
 
+
+    # residual = ||closest_points - points||_2^2
+    # closest_points : (batch_size, num_particles, num_detectors, 3)
+    # points         : (batch_size, num_particles, num_detectors, 3)
+    # residual       : (batch_size, num_particles, num_detectors)
+    residual = torch.pow(closest_points - points, 2).sum(-1)
+
+    # average the residual to one number for metric tracking/optimizing
     if averaged:
-        return residual.mean()
+        residual = residual.mean()
+
+    # return the closest points for further analysis
+    if return_closest_points:
+        return residual, closest_points
+
     return residual
 
 

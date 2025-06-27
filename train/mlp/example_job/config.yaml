@@ -12,7 +12,7 @@ model:
   - 128
   in_features: 6
   out_features: 27
-  randperm: true
+  randperm: tru
   rezero: true
   sine_factor: 1
   subset_config:
