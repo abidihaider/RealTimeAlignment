@@ -10,14 +10,15 @@ from rtal.utils.utils import get_activ_layer
 class CloudBatchNorm(nn.Module):
     def __init__(self, num_features):
         super().__init__()
-        self.bn = nn.BatchNorm1d(num_features)
+        # self.bn = nn.BatchNorm1d(num_features)
+        self.norm = nn.InstanceNorm1d(num_features)
 
     def forward(self, tensor):
         """
         tensor: (Batch_size, num_points, num_features)
         """
         tensor = tensor.permute(0, 2, 1)
-        tensor = self.bn(tensor)
+        tensor = self.norm(tensor)
         tensor = tensor.permute(0, 2, 1)
         return tensor
 
