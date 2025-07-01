@@ -230,7 +230,7 @@ def train():
     train_ds  = ROMDataset(data_root, split='train', num_particles=num_particles)
     valid_ds  = ROMDataset(data_root, split='test',  num_particles=num_particles)
     train_ldr = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    valid_ldr = DataLoader(valid_ds, batch_size=batch_size, shuffle=False)
+    valid_ldr = DataLoader(valid_ds, batch_size=1, shuffle=False)
 
     # training
     train_log = Path(checkpoint_path)/'train_log.csv'

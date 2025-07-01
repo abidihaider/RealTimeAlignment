@@ -1,26 +1,36 @@
-data:
-    mode: raw
-    num_particles: 50
 checkpointing:
-    checkpoint_path: /home/yhuang2/PROJs/RealTimeAlignment/train/mlp_v2/checkpoints/
-    save_frequency: 10
-    resume: true
+  checkpoint_path: /home/yhuang2/PROJs/RealTimeAlignment/train/mlp_v2/checkpoints
+  resume: true
+  save_frequency: 20
+data:
+  mode: raw
+  num_particles: 50
+  rounded: false
 model:
-    in_features: 6
-    out_features: 27
-    embedding_features: [512, 256]
-    subset_config:
-        - [3, 512, 256]
-        - [3, 512, 256]
-    randperm: true
-    batchnorm: true
-    activ:
-        name: leakyrelu
-        negative_slope: .1
+  embedding_features:
+  - 128
+  - 128
+  in_features: 6
+  out_features: 27
+  randperm: true
+  rezero: true
+  batchnorm: false
+  activ:
+      name: leakyrelu
+      negative_slope: .1
+  subset_config:
+  - &id001
+    - 6
+    - 128
+    - 128
+    - 128
+    - 128
+  - *id001
+  - *id001
 train:
-    num_epochs: 200
-    num_warmup_epochs: 50
-    batch_size: 32
-    learning_rate: 0.0001
-    sched_steps: 20
-    sched_gamma: .95
+  batch_size: 64
+  learning_rate: 0.0001
+  num_epochs: 200
+  num_warmup_epochs: 50
+  sched_gamma: 0.95
+  sched_steps: 20
