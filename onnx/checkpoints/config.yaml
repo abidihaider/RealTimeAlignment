@@ -1,5 +1,5 @@
 checkpointing:
-  checkpoint_path: ./checkpoints
+  checkpoint_path: /home/yhuang2/PROJs/RealTimeAlignment/train/mlp_v2/checkpoints
   resume: true
   save_frequency: 20
 data:
@@ -13,7 +13,10 @@ model:
   in_features: 6
   out_features: 27
   rezero: true
-  sine_factor: 1
+  norm: null
+  activ:
+      name: leakyrelu
+      negative_slope: .1
   subset_config:
   - &id001
     - 6
@@ -23,7 +26,6 @@ model:
     - 128
   - *id001
   - *id001
-  use_sine_init: false
 train:
   batch_size: 64
   learning_rate: 0.0001
