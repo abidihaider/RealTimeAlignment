@@ -51,7 +51,7 @@ class Checkpointer:
         """
         Save (sub)model checkpoints.
         """
-        model_path = self.checkpoint_path/f'{self.prefix}_{suffix}.path'
+        model_path = self.checkpoint_path/f'{self.prefix}_{suffix}.pth'
         # assert not model_path.exists(), \
         #     f'{model_path} already exists, refuse to overwrite'
 
@@ -100,7 +100,7 @@ class Checkpointer:
         prefix = self.prefix if prefix is None else prefix
 
         # Load a checkpoint
-        model_path = self.checkpoint_path/f'{prefix}_{epoch}.path'
+        model_path = self.checkpoint_path/f'{prefix}_{epoch}.pth'
 
         assert model_path.exists(), \
             f'Requested checkpoint {str(model_path)} does not exist!'
