@@ -33,7 +33,7 @@ class CloudNorm(nn.Module):
         return tensor
 
 
-class Linear(nn.Module):
+class LinearBlock(nn.Module):
     """
     Linear layer with a layer normalization, a sine activation,
     and a residual connection.
@@ -75,10 +75,10 @@ class SubsetSolver(nn.Module):
         layers = []
         for out_f in features:
             if in_f == out_f:
-                layers += [Linear(in_features  = in_f,
-                                  out_features = out_f,
-                                  activ        = activ,
-                                  norm         = norm)]
+                layers += [LinearBlock(in_features  = in_f,
+                                       out_features = out_f,
+                                       activ        = activ,
+                                       norm         = norm)]
             else:
                 if norm is None:
                     norm_layer = nn.Identity()
