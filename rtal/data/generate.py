@@ -78,7 +78,7 @@ def generate_one(config, output_folder, fname):
         result_dict['readout_start_rounded'] = np.round(readout_start)
         result_dict['readout_curr_rounded']  = np.round(readout_curr)
     # save to npz
-    np.savez_compressed(output_folder/fname, **result_dict)
+    np.savez_compressed(Path(output_folder)/fname, **result_dict)
 
 
 def generate_dataset(num_samples, config_fname, output_folder):
