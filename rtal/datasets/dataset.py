@@ -147,8 +147,6 @@ if __name__ == '__main__':
                 break
             print()
 
-    print()
-    test('/data/yhuang2/rtal/rom_det-3_part-200_rounded/train')
 
     print()
-    test('/data/yhuang2/rtal/rom_det-3_part-200_cont-and-rounded/train')
+    test('/data/rtal/rom_det-3_part-200_cont-and-rounded/train') #<- replace with the correct path
