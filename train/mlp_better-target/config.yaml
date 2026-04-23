@@ -1,20 +1,21 @@
 checkpointing:
-  checkpoint_path: ./checkpoints
+  checkpoint_path: checkpoints
   resume: true
   save_frequency: 20
 data:
   mode: raw
   num_particles: 50
-  rounded: false
+  rounded: true
 model:
   embedding_features:
   - 128
   - 128
   in_features: 6
-  out_features: 27
-  randperm: tru
-  rezero: true
-  sine_factor: 1
+  out_features: 18
+  randperm: true
+  batchnorm: false
+  activ:
+      name: relu
   subset_config:
   - &id001
     - 6
@@ -24,7 +25,6 @@ model:
     - 128
   - *id001
   - *id001
-  use_sine_init: false
 train:
   batch_size: 64
   learning_rate: 0.0001

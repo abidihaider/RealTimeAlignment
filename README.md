@@ -15,9 +15,3 @@
 </p>
 ## Dataset API for loading ROM data (TBD)
 ## Model (TBD)
-
-
-## Archived
-```
-  python3 generateData.py --nEvents 10 --outputName output.json
-```
