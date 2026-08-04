@@ -20,17 +20,24 @@ detector can resolve.
 
 Same checkpoint (`checkpoints_narrow`), same weights, only the injection pattern changed:
 
-| param | uniform (blind) slope / r² | observable slope / r² |
-|-------|---------------------------|-----------------------|
-| dx    | 0.112 / 0.017             | **0.875 / 0.970**     |
-| dy    | −0.011 / 0.003            | 0.446 / 0.892         |
-| dz    | 0.181 / 0.047             | **0.856 / 0.929**     |
-| nu    | 0.046 / 0.082             | **0.598 / 0.943**     |
-| nv    | 0.002 / 0.000             | **0.690 / 0.930**     |
-| rho   | −0.004 / 0.001            | **0.869 / 0.987**     |
+| param | uniform (blind) slope / r² | observable slope / r² | 2D residual improvement (det 0/1/2) |
+|-------|---------------------------|-----------------------|-------------------------------------|
+| dx    | 0.112 / 0.017             | **0.904 / 0.967**     | 3.4× / 8.1× / 1.5× |
+| dy    | −0.011 / 0.003            | 0.516 / 0.895         | 0.84× / 0.87× / 0.59× |
+| dz    | 0.181 / 0.047             | **0.827 / 0.961**     | 3.6× / 9.0× / 1.5× |
+| nu    | 0.046 / 0.082             | 0.611 / 0.931         | 0.46× / 1.01× / 0.99× |
+| nv    | 0.002 / 0.000             | 0.685 / 0.907         | 0.51× / 1.05× / 0.96× |
+| rho   | −0.004 / 0.001            | **0.819 / 0.947**     | 1.4× / 12.3× / 2.3× |
 
-The original narrow model tracks tilt at r² = 0.94 and roll at r² = 0.99. It was never
+The original narrow model tracks tilt at r² = 0.93 and roll at r² = 0.95. It was never
 broken.
+
+But note the last column, which is the quantity that actually matters for alignment: for
+`dx`, `dz` and `rho` the correction shrinks the residual by up to 12×, whereas for `nu`,
+`nv` and `dy` it is **at or below 1.0** — the correction does not help and on detector 0
+makes things worse. At slope ~0.6 the model under-predicts these parameters, and the
+noise it injects exceeds the error it removes. That, not an inability to see tilt, is the
+real deficiency to target.
 
 Consequences for the rest of this document:
 
@@ -83,6 +90,14 @@ implicit namespace packages when the repo root happened to be on the path.
 
 See §0 and §2. **Fixed:** `--shape observable`, plus the weak-mode fraction is printed
 on every run with a warning above 50%.
+
+A second defect in the first version of that fix: for the rotation parameters the
+observable subspace is 2-dimensional, and the representative was taken straight from an
+SVD, whose choice among equal singular values is arbitrary. It came out as `(0, +1, -1)`,
+giving **detector 0 no misalignment at all** and silently leaving a third of the scan
+untested. Now built from an alternating template projected onto the observable subspace,
+which yields the second difference `(+1, -2, +1)` — observable for every parameter and
+non-zero on every detector.
 
 ### 1.5 `environment.yml` will not reproduce
 

@@ -349,16 +349,22 @@ def observable_weights(p_idx):
     family = weak_modes.blind_family(_PARAM_NAMES[p_idx])
     basis  = weak_modes.blind_basis(positions, family)          # (n_dets, rank)
 
-    # any vector orthogonal to the blind subspace is observable
+    # For the rotations the observable subspace is 2-dimensional, so "any
+    # orthogonal vector" is under-determined — and an arbitrary SVD basis
+    # vector can put a zero on a detector, leaving it untested. Start from an
+    # alternating template instead: projected, it becomes the second difference
+    # (+1, -2, +1), which is observable for *both* families and gives every
+    # detector a non-zero excursion.
+    template  = (-1.0) ** np.arange(len(positions))
     projector = np.eye(len(positions)) - basis @ basis.T
-    _, singular, right = np.linalg.svd(projector)
-    weights = right[0] if singular[0] > 1e-12 else None
+    weights   = projector @ template
 
-    if weights is None:
+    peak = np.abs(weights).max()
+    if peak < 1e-12:
         raise ValueError(f'no observable pattern exists for {_PARAM_NAMES[p_idx]} '
                          f'with {len(positions)} detectors')
 
-    return weights / np.abs(weights).max()
+    return weights / peak
 
 
 def build_trajectory(n_steps, n_dets, profile, active_params, active_dets,
