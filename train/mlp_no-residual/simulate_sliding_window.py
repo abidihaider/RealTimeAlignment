@@ -339,8 +339,9 @@ def observable_weights(p_idx):
 
     For the translations, whose constant and linear-in-L modes are both blind,
     the only survivor with three planes is the second difference (+1, -2, +1).
-    For the rotations, only the common mode is blind, so the simplest survivor
-    is the linear-in-L pattern (+1, 0, -1).
+    For the rotations only the common mode is blind, so the observable subspace
+    is 2-dimensional and (+1, -2, +1) is one valid choice among many — it is
+    used for both so that every detector gets a non-zero excursion.
 
     Normalised to unit peak, so `--amp-*` still means the largest per-detector
     excursion.
