@@ -65,6 +65,21 @@ Usage
   # sweep all six parameters one at a time and compare
   python simulate_sliding_window.py --config config_narrow.yaml \\
       --steps 300 --window 50 --profile ramp --scan --output plots/scan
+
+Architectures
+-------------
+Both the original 27-output model (rtal.models.mlp_no_residual.MLP) and the
+physical-parameter model (rtal.models.mlp_physical.PhysicalMLP) are supported;
+--arch defaults to inferring which one from the config. Point --config at the
+relevant training config and everything downstream is identical, so the two can
+be compared plot for plot:
+
+  python simulate_sliding_window.py \\
+      --config ../mlp_physical/config.yaml \\
+      --steps 300 --window 50 --profile ramp --scan --output plots/scan_physical
+
+For the physical model the predicted parameters come straight from the network,
+so the tracking plots involve no inversion at all.
 """
 
 import argparse
@@ -80,6 +95,7 @@ import torch
 
 from rtal.utils import Checkpointer
 from rtal.models.mlp_no_residual import MLP
+from rtal.models.mlp_physical import PhysicalMLP, params_to_detector
 from rtal.geometry.line import reconstruct, get_center_basis
 from rtal.geometry.misalign import Misalign
 from rtal.data.detector import Detector
@@ -207,6 +223,64 @@ def frame_health(det9):
 
 def _to_numpy(x):
     return x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
+
+
+# ---------------------------------------------------------------------------
+# Architectures
+# ---------------------------------------------------------------------------
+
+def detect_arch(model_config):
+    """
+    Infer the architecture from the model block of a config.
+
+    PhysicalMLP takes num_detectors and emits 6 parameters per detector; the
+    original MLP takes out_features and emits the 9 raw numbers.
+    """
+    if 'num_detectors' in model_config:
+        return 'physical'
+    if 'out_features' in model_config:
+        return 'raw9'
+    raise ValueError(
+        'cannot tell which architecture this config describes — expected either '
+        '"num_detectors" (physical) or "out_features" (raw9) under model:'
+    )
+
+
+class Predictor:
+    """
+    Uniform interface over the two architectures.
+
+    Both are asked the same question — given a window of readouts and the
+    nominal geometry, what is the corrected geometry? — so every plot
+    downstream is architecture-agnostic.
+
+    The physical model returns its six parameters directly, so for it the
+    tracking plots need no inversion at all; for the raw-9 model they are
+    recovered with geometry_to_params.
+    """
+
+    def __init__(self, model, arch):
+        self.model = model
+        self.arch  = arch
+
+    def __call__(self, model_input, detector_start):
+        """
+        model_input    : (1, W, n_dets*2)
+        detector_start : (1, n_dets, 9)
+
+        Returns detector_pred (1, n_dets, 9) and, when the architecture
+        provides them, params (n_dets, 6) as numpy — otherwise None.
+        """
+        if self.arch == 'physical':
+            params = self.model.inference(model_input, randperm=False)   # (1, n_dets, 6)
+            detector_pred = params_to_detector(params, detector_start,
+                                               self.model.misalign_layer)
+            return detector_pred, _to_numpy(params).squeeze(0).astype(np.float64)
+
+        n_dets = detector_start.shape[1]
+        misalignment = self.model.inference(model_input, randperm=False)  # (1, n_dets*9)
+        misalignment = misalignment.reshape(1, n_dets, 9)
+        return detector_start + misalignment, None
 
 
 # ---------------------------------------------------------------------------
@@ -354,10 +428,11 @@ def generate_track(centers, local_x, local_y, rng, max_tries=100):
 # Simulation loop
 # ---------------------------------------------------------------------------
 
-def run_simulation(model, device, trajectory, window_size, seed, meta):
+def run_simulation(predictor, device, trajectory, window_size, seed, meta):
     """
     Generate tracks along `trajectory` and run sliding-window inference.
 
+    predictor  : Predictor wrapping either architecture
     trajectory : (n_steps, n_dets, 6)
 
     Returns a dict of per-inference-step arrays (indexed from window_size-1 on).
@@ -397,7 +472,7 @@ def run_simulation(model, device, trajectory, window_size, seed, meta):
         'global_before', 'global_after',
     )}
 
-    model.eval()
+    predictor.model.eval()
     with torch.no_grad():
         for t in tqdm(range(window_size - 1, num_steps), desc='inference'):
             w0 = t - window_size + 1
@@ -407,13 +482,11 @@ def run_simulation(model, device, trajectory, window_size, seed, meta):
             inp    = torch.tensor(win_rc, dtype=torch.float32, device=device)
             inp    = inp.flatten(-2, -1).unsqueeze(0)                     # (1, W, 6)
 
-            mis_pred = model.inference(inp, randperm=False)               # (1, 27)
-            mis_pred = mis_pred.reshape(1, n_dets, 9)                     # (1, n_dets, 9)
-
             # ---- newest track residuals ----
             rc_new, rs_new, det_c_new, det_s_new = tracks[t]
             det_s_t  = torch.tensor(det_s_new, dtype=torch.float32, device=device).unsqueeze(0)  # (1, n_dets, 9)
-            det_pred = det_s_t + mis_pred
+
+            det_pred, params_direct = predictor(inp, det_s_t)              # (1, n_dets, 9)
 
             rc_t = torch.tensor(rc_new, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)  # (1,1,n_dets,2)
             rs_t = torch.tensor(rs_new, dtype=torch.float32, device=device).unsqueeze(0).unsqueeze(0)
@@ -455,15 +528,24 @@ def run_simulation(model, device, trajectory, window_size, seed, meta):
             ga = ga.squeeze(0).squeeze(0).cpu().numpy()
 
             # ---- misalignment: raw 9 params, physical 6 params, magnitudes ----
+            # For both architectures the raw view is the delta between the
+            # predicted and the nominal geometry — for the raw-9 model that is
+            # exactly what it emitted.
+            det_pred_np = _to_numpy(det_pred).squeeze(0).astype(np.float64)
             mis_true    = det_c_new - det_s_new                                    # (n_dets, 9)
-            mis_pred_np = mis_pred.squeeze(0).cpu().numpy().astype(np.float64)
+            mis_pred_np = det_pred_np - det_s_new
+
+            # The physical model hands back its parameters directly, so no
+            # inversion is needed; the raw-9 model needs one.
+            pred_params = (params_direct if params_direct is not None
+                           else geometry_to_params(det_pred_np, det_s_new))
 
             results['t'].append(t)
             results['true_raw'].append(mis_true)
             results['pred_raw'].append(mis_pred_np)
             results['true_params'].append(geometry_to_params(det_c_new, det_s_new))
-            results['pred_params'].append(geometry_to_params(det_pred.squeeze(0), det_s_new))
-            results['frame_health'].append(frame_health(det_pred.squeeze(0)))
+            results['pred_params'].append(pred_params)
+            results['frame_health'].append(frame_health(det_pred_np))
             results['true_center_shift'].append(np.linalg.norm(mis_true[:, :3], axis=-1))
             results['true_orient_shift'].append(np.linalg.norm(mis_true[:, 3:], axis=-1))
             results['pred_center_shift'].append(np.linalg.norm(mis_pred_np[:, :3], axis=-1))
@@ -1134,6 +1216,10 @@ def get_args():
     )
     p.add_argument('--config',  type=str, default='config_narrow.yaml',
                    help='path to model config yaml')
+    p.add_argument('--arch',    type=str, default='auto',
+                   choices=('auto', 'raw9', 'physical'),
+                   help='model architecture; auto infers it from the config '
+                        '(num_detectors -> physical, out_features -> raw9)')
     p.add_argument('--device',  type=str, default='cpu', choices=('cuda', 'cpu'))
     p.add_argument('--gpu-id',  type=int, default=0)
     p.add_argument('--output',  type=str, default='plots/sliding_window',
@@ -1177,17 +1263,26 @@ def get_args():
 
 
 def _load_model(args):
+    """Build the right architecture for this config and load its checkpoint."""
     with open(args.config, 'r', encoding='utf-8') as fh:
         config = yaml.safe_load(fh)
 
+    arch = detect_arch(config['model']) if args.arch == 'auto' else args.arch
+
     config_dir      = Path(args.config).resolve().parent
-    checkpoint_path = config_dir / config['checkpointing']['checkpoint_path']
-    model           = MLP(**config['model']).to(args.device)
+    checkpoint_path = Path(config['checkpointing']['checkpoint_path'])
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = config_dir / checkpoint_path
+
+    model_cls = PhysicalMLP if arch == 'physical' else MLP
+    model     = model_cls(**config['model']).to(args.device)
     Checkpointer(model, checkpoint_path=checkpoint_path).load(device=args.device)
-    return model
+
+    print(f'architecture: {arch}')
+    return Predictor(model, arch)
 
 
-def _simulate(model, args, active_params, active_dets, amps, drifts, output_dir):
+def _simulate(predictor, args, active_params, active_dets, amps, drifts, output_dir):
     """Build a trajectory, run the simulation, and emit every plot for it."""
     n_dets = len(_DETECTORS)
     rng    = np.random.default_rng(args.seed)
@@ -1214,13 +1309,14 @@ def _simulate(model, args, active_params, active_dets, amps, drifts, output_dir)
         'profile':       args.profile,
         'active_params': [_PARAM_NAMES[p] for p in active_params],
         'active_dets':   list(active_dets),
+        'arch':          predictor.arch,
         'steps':         args.steps,
         'window':        args.window,
         'seed':          args.seed,
     }
 
     results = run_simulation(
-        model       = model,
+        predictor   = predictor,
         device      = args.device,
         trajectory  = trajectory,
         window_size = args.window,
@@ -1237,7 +1333,7 @@ def main():
     if args.device == 'cuda':
         torch.cuda.set_device(args.gpu_id)
 
-    model  = _load_model(args)
+    predictor = _load_model(args)
     n_dets = len(_DETECTORS)
 
     amps   = np.zeros(6)
@@ -1256,7 +1352,7 @@ def main():
         for p_idx, name in enumerate(_PARAM_NAMES):
             print(f'\n{"=" * 70}\nScan {p_idx + 1}/6 — isolating {name}\n{"=" * 70}')
             scorecards[name] = _simulate(
-                model, args,
+                predictor, args,
                 active_params = [p_idx],
                 active_dets   = active_dets,
                 amps          = amps,
@@ -1266,7 +1362,7 @@ def main():
         plot_scan_comparison(scorecards, output_root)
     else:
         _simulate(
-            model, args,
+            predictor, args,
             active_params = _parse_params(args.params),
             active_dets   = active_dets,
             amps          = amps,
