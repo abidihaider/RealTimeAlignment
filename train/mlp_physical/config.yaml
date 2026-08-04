@@ -1,0 +1,61 @@
+checkpointing:
+  checkpoint_path: ./checkpoints
+  resume: true
+  save_frequency: 20
+
+data:
+  mode: raw
+  # Events hold ~150-175 accepted particles; stay below the minimum so every
+  # batch has a uniform shape.
+  num_particles: 128
+  rounded: false
+
+model:
+  in_features: 6          # 3 detectors x 2 readout coordinates
+  num_detectors: 3
+  embedding_features: [128, 128]
+  randperm: true
+  batchnorm: false
+  activ:
+    name: leakyrelu
+    negative_slope: .125
+  subset_config:
+    - &id001 [2, 128, 128, 128, 128]
+    - *id001
+    - *id001
+
+  # Measured per-feature standard deviation of the readout, in bins, in the
+  # (det0_x, det0_y, det1_x, det1_y, det2_x, det2_y) order the model sees.
+  # The raw readout spans +-50 bins; a 1-sigma tilt modulates it by ~0.2%, so
+  # without this the signal is far below what the first linear layer resolves.
+  input_scale: [8.0, 8.0, 16.0, 16.0, 24.0, 24.0]
+  input_mean:  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+  # 1 sigma of the training distribution for each parameter, so the network
+  # regresses O(1) numbers.
+  param_scale: [0.05, 0.05, 0.05, 0.0873, 0.0873, 0.0873]
+
+loss:
+  # Relative observability of each parameter, measured as bins of hit
+  # displacement per unit of the parameter and rescaled so dx = 1:
+  #   dx 0.50 bins/sigma, dy 0.06, dz 0.50, nu ~0.21, nv ~0.21, rho ~1.95
+  # Roll is the most observable degree of freedom of all six; dy and tilt are
+  # the least. Weighting by this puts every term in the same physical units.
+  param_weights: [1.0, 0.12, 1.0, 0.24, 0.24, 2.23]
+  # Weight of the geometric (hit displacement, mm^2) term.
+  geom_weight: 1.0
+
+train:
+  # PER GPU. Under torchrun the effective batch is batch_size * nproc_per_node,
+  # so 128 x 8 = 1024. With a 200k-sample train split that is ~195 steps/epoch.
+  batch_size: 128
+  # Base rate for a single GPU. scale_lr multiplies it by the world size
+  # (linear scaling rule), so 8 GPUs train at 8e-4.
+  learning_rate: 0.0001
+  scale_lr: true
+  num_epochs: 200
+  # Not a warmup ramp — the LR is constant until this epoch, then MultiStepLR
+  # decays it by sched_gamma every sched_steps epochs.
+  num_warmup_epochs: 50
+  sched_gamma: 0.95
+  sched_steps: 20

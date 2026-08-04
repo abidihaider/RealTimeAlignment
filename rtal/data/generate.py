@@ -12,13 +12,19 @@ from rtal.data.detector import Detector
 from rtal.data.particle import RandomParticle
 
 
-def generate_one(config, output_folder, fname):
+def generate_one(config, output_folder, fname, seed=None):
     """
     Generate one dataset
+
+    seed overrides config['dataset']['random_seed'] for this sample.  Callers
+    generating more than one sample must vary it — the seed is applied here, so
+    reusing it produces byte-identical samples.
     """
 
     # == set random seed ======================================================
-    np.random.seed(config['dataset']['random_seed'])
+    if seed is None:
+        seed = config['dataset']['random_seed']
+    np.random.seed(seed)
 
     # create detectors
     detectors = []
@@ -97,10 +103,12 @@ def generate_dataset(num_samples, config_fname, output_folder):
     else:
         raise ValueError(f'{output_folder} is not empty!')
 
-    # create samples
+    # create samples — the seed must advance per sample, otherwise every
+    # sample is an identical copy of the first one
+    base_seed = config['dataset']['random_seed']
     for sample_idx in tqdm(range(num_samples)):
         fname = f'sample_{sample_idx}'
-        generate_one(config, output_folder, fname)
+        generate_one(config, output_folder, fname, seed=base_seed + sample_idx)
 
 
 def main():
