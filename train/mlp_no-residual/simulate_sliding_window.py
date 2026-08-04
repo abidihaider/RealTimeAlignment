@@ -385,33 +385,53 @@ def build_trajectory(n_steps, n_dets, profile, active_params, active_dets,
     drifts        : (6,) per-step std, used by `walk`
     period        : steps per full `sine` period
     phase_step    : `sine` phase offset added per detector index (rad)
+    shape         : 'uniform'    — each detector gets its own time series, which
+                                   for `walk` means an independent random walk
+                                   and for `sine` means a phase offset;
+                    'observable' — one time series per parameter, distributed
+                                   across the detectors by the observable
+                                   spatial pattern
+
+    Under 'observable' the time series is drawn *once* and then weighted, so the
+    spatial pattern is exactly the observable one for every profile. Weighting
+    per-detector series separately would not do this: independent random walks
+    scaled by a fixed vector are still ~39% blind, and a phase-offset sine comes
+    out worse than leaving it alone.
     """
     if profile not in _PROFILES:
         raise ValueError(f'unknown profile {profile!r}, expected one of {_PROFILES}')
 
     traj = np.zeros((n_steps, n_dets, 6))
-    t    = np.arange(n_steps)
 
-    for det_idx in active_dets:
-        for p_idx in active_params:
-            if profile == 'walk':
-                steps    = rng.normal(0.0, drifts[p_idx], n_steps)
-                steps[0] = 0.0
-                values   = np.cumsum(steps)
-            elif profile == 'ramp':
-                values = amps[p_idx] * t / max(n_steps - 1, 1)
-            elif profile == 'sine':
-                values = amps[p_idx] * np.sin(2 * np.pi * t / period
-                                              + phase_step * det_idx)
-            else:  # static
-                values = np.full(n_steps, amps[p_idx])
-
-            if shape == 'observable':
-                values = values * observable_weights(p_idx)[det_idx]
-
-            traj[:, det_idx, p_idx] = values
+    for p_idx in active_params:
+        if shape == 'observable':
+            weights = observable_weights(p_idx)
+            values  = _profile_values(profile, n_steps, amps[p_idx],
+                                      drifts[p_idx], period, 0.0, rng)
+            for det_idx in active_dets:
+                traj[:, det_idx, p_idx] = values * weights[det_idx]
+        else:
+            for det_idx in active_dets:
+                traj[:, det_idx, p_idx] = _profile_values(
+                    profile, n_steps, amps[p_idx], drifts[p_idx],
+                    period, phase_step * det_idx, rng)
 
     return _clamp_normal(traj)
+
+
+def _profile_values(profile, n_steps, amp, drift, period, phase, rng):
+    """One parameter's time series, shape (n_steps,)."""
+    t = np.arange(n_steps)
+
+    if profile == 'walk':
+        steps    = rng.normal(0.0, drift, n_steps)
+        steps[0] = 0.0
+        return np.cumsum(steps)
+    if profile == 'ramp':
+        return amp * t / max(n_steps - 1, 1)
+    if profile == 'sine':
+        return amp * np.sin(2 * np.pi * t / period + phase)
+    return np.full(n_steps, amp)   # static
 
 
 def _clamp_normal(traj, limit=0.99):
