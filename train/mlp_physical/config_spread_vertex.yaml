@@ -36,12 +36,14 @@ model:
   param_scale: [0.05, 0.05, 0.05, 0.0873, 0.0873, 0.0873]
 
 loss:
-  # Re-measured under the spread-vertex beam (bins of hit displacement per
-  # unit parameter, rescaled so dx = 1):
-  #   dx 0.50 bins/sigma, dy 0.07, dz 0.50, nu 0.31, nv 0.31, rho 2.81
-  # Tilt gains 55% overall and 160% on detector 0, which the point vertex left
-  # almost blind; translations are unchanged, as expected.
-  param_weights: [1.0, 0.15, 1.0, 0.35, 0.36, 3.21]
+  # Measured against the straightness residual -- the only misalignment
+  # information available without knowing the track, which is the network's
+  # situation -- on weak-mode-constrained draws, rescaled so dx = 1.
+  #
+  # Earlier weights came from raw hit displacement with the same value applied
+  # to all three planes, which is itself a blind mode, so they overstated rho
+  # (3.21) and tilt (0.35). These are what the detector can actually resolve.
+  param_weights: [1.0, 0.146, 1.0, 0.26, 0.245, 2.028]
   # Weight of the geometric (hit displacement, mm^2) term.
   geom_weight: 1.0
 

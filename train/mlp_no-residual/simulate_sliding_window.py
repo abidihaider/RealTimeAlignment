@@ -98,6 +98,7 @@ from rtal.models.mlp_no_residual import MLP
 from rtal.models.mlp_physical import PhysicalMLP, params_to_detector
 from rtal.geometry.line import reconstruct, get_center_basis
 from rtal.geometry.misalign import Misalign
+from rtal.geometry import weak_modes
 from rtal.data.detector import Detector
 from rtal.data.particle import Particles
 
@@ -320,8 +321,48 @@ class Predictor:
 # Misalignment trajectory
 # ---------------------------------------------------------------------------
 
+def detector_positions():
+    """Plane coordinate along the beam, for the weak-mode projection."""
+    centers = np.stack([np.asarray(d['center_start'], dtype=np.float64)
+                        for d in _DETECTORS])
+    return centers[:, int(np.argmax(centers.std(axis=0)))]
+
+
+def observable_weights(p_idx):
+    """
+    Per-detector pattern for an injection the detector can actually see.
+
+    Applying the same value to every plane — the default for every profile — is
+    a *blind* mode: straight tracks cannot see a global translation, shear,
+    rotation or roll, so projecting a uniform pattern leaves exactly nothing.
+    The pattern has to be built observable in the first place.
+
+    For the translations, whose constant and linear-in-L modes are both blind,
+    the only survivor with three planes is the second difference (+1, -2, +1).
+    For the rotations, only the common mode is blind, so the simplest survivor
+    is the linear-in-L pattern (+1, 0, -1).
+
+    Normalised to unit peak, so `--amp-*` still means the largest per-detector
+    excursion.
+    """
+    positions = detector_positions()
+    family = weak_modes.blind_family(_PARAM_NAMES[p_idx])
+    basis  = weak_modes.blind_basis(positions, family)          # (n_dets, rank)
+
+    # any vector orthogonal to the blind subspace is observable
+    projector = np.eye(len(positions)) - basis @ basis.T
+    _, singular, right = np.linalg.svd(projector)
+    weights = right[0] if singular[0] > 1e-12 else None
+
+    if weights is None:
+        raise ValueError(f'no observable pattern exists for {_PARAM_NAMES[p_idx]} '
+                         f'with {len(positions)} detectors')
+
+    return weights / np.abs(weights).max()
+
+
 def build_trajectory(n_steps, n_dets, profile, active_params, active_dets,
-                     amps, drifts, period, rng, phase_step=0.0):
+                     amps, drifts, period, rng, phase_step=0.0, shape='uniform'):
     """
     Build a misalignment trajectory of shape (n_steps, n_dets, 6).
 
@@ -357,6 +398,9 @@ def build_trajectory(n_steps, n_dets, profile, active_params, active_dets,
                                               + phase_step * det_idx)
             else:  # static
                 values = np.full(n_steps, amps[p_idx])
+
+            if shape == 'observable':
+                values = values * observable_weights(p_idx)[det_idx]
 
             traj[:, det_idx, p_idx] = values
 
@@ -1273,6 +1317,12 @@ def get_args():
                         % ','.join(_PARAM_NAMES))
     p.add_argument('--dets',    type=str, default='all',
                    help='comma-separated detector indices, or "all" | default: all')
+    p.add_argument('--shape',   type=str, default='uniform',
+                   choices=('uniform', 'observable'),
+                   help='uniform applies the same value to every selected plane, '
+                        'which for all six parameters is a blind mode that straight '
+                        'tracks cannot see; observable projects onto the detectable '
+                        'subspace (the second difference) at the same amplitude')
 
     p.add_argument('--drift-center', type=float, default=0.002,
                    help='walk: per-step std of dx/dy/dz (mm) | default: 0.002')
@@ -1335,17 +1385,26 @@ def _simulate(predictor, args, active_params, active_dets, amps, drifts, output_
         period        = args.period,
         rng           = rng,
         phase_step    = args.sine_phase_step,
+        shape         = args.shape,
     )
 
     description = describe_injection(args.profile, active_params, active_dets,
                                      amps, drifts, args.period)
+    blind = weak_modes.blind_fraction(trajectory, detector_positions())
     print(f'\nInjection: {description}')
+    print(f'  shape: {args.shape};  unobservable (weak-mode) fraction: {blind * 100:.1f}%')
+    if blind > 0.5:
+        print('  WARNING: most of this injection is a mode straight tracks cannot '
+              'see.\n           The model cannot track it however well it is '
+              'trained. Use --shape observable.')
 
     meta = {
         'description':   description,
         'profile':       args.profile,
         'active_params': [_PARAM_NAMES[p] for p in active_params],
         'active_dets':   list(active_dets),
+        'shape':         args.shape,
+        'blind_fraction': blind,
         'arch':          predictor.arch,
         'steps':         args.steps,
         'window':        args.window,

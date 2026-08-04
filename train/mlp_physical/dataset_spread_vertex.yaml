@@ -46,6 +46,18 @@ misalignments:
   normal_shift:  {scale: 0.0873}   # sigma ~ 5 deg tilt
   axes_rotation: {scale: 0.0873}   # sigma = 5 deg roll
 
+  # Straight tracks cannot see a misalignment whose transverse displacement is
+  # affine in the plane position: it maps every straight track to another
+  # straight track. An eigenanalysis of the straightness residual finds 9 of
+  # the 18 parameters blind at ~1e-8 of the best-determined mode -- global
+  # translation, shear, rotation and roll about the beam. Measured on this
+  # generator, 45% of an unconstrained misalignment lies in that null space.
+  #
+  # Removing it costs 0.6% of the observable signal and eliminates 45% of the
+  # target magnitude, all of it unlearnable. This is the same convention real
+  # alignment uses: the global frame is defined by the detector, not fitted.
+  remove_weak_modes: true
+
 particles:
   vertex_mean:    [0, 0, 0]
   # Transverse (x, z) spread of 3 mm against a 5 mm sensor half-size. This is

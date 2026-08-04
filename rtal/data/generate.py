@@ -10,6 +10,7 @@ import numpy as np
 
 from rtal.data.detector import Detector
 from rtal.data.particle import RandomParticle
+from rtal.geometry.weak_modes import constrain_detectors
 
 
 def generate_one(config, output_folder, fname, seed=None):
@@ -37,6 +38,9 @@ def generate_one(config, output_folder, fname, seed=None):
     all_misalignments = list(config['misalignments'].keys())
     all_misalignments.remove('max_num_misalignments')
 
+    all_misalignments.remove('remove_weak_modes') \
+        if 'remove_weak_modes' in all_misalignments else None
+
     for detector in detectors:
         num_misalignments = np.random.randint(1, max_num_misalignments + 1)
         misalignments = np.random.choice(all_misalignments, num_misalignments)
@@ -44,6 +48,12 @@ def generate_one(config, output_folder, fname, seed=None):
         for misal in misalignments:
             kwargs = config['misalignments'][misal]
             detector.misalign(misal, kwargs, verbose=False)
+
+    # Drop the misalignment components that straight tracks cannot see (global
+    # translation, shear, rotation and roll). Leaving them in asks the network
+    # to predict something no measurement determines.
+    if config['misalignments'].get('remove_weak_modes', False):
+        constrain_detectors(detectors)
 
     # == generate random particles ============================================
     particle_generator = RandomParticle(**config['particles'])
