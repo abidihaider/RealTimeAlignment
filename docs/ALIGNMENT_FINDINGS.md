@@ -296,7 +296,7 @@ tilt (0.35). Superseded.
 `nn.MSELoss` on the 27 raw numbers, the orientation block takes **77%** of the loss
 (translation 23%), and within it the near-unobservable tilt dominates the variance. What
 does *not* stand is the inference that this was preventing roll from being learned — §0
-shows roll at r² = 0.99 on the old architecture.
+shows roll at r² = 0.95, with a 12× residual improvement, on the old architecture.
 
 ### Verified
 
