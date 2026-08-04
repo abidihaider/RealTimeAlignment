@@ -77,8 +77,18 @@ class ROMDataset(Dataset):
             particle_vertex    = handle['particle_vertex']
             particle_direction = handle['particle_direction']
 
-            # select particles
-            indices = np.random.permutation(particle_vertex.shape[0])[:self.num_particles]
+            # Select particles. Every item must yield exactly num_particles or
+            # the default collate fails with "Trying to resize storage that is
+            # not resizable" — events hold a variable number of accepted hits,
+            # and the short tail is easy to underestimate from a small sample.
+            # Short events are padded by resampling rather than crashing.
+            n_available = particle_vertex.shape[0]
+            indices = np.random.permutation(n_available)[:self.num_particles]
+            if n_available < self.num_particles:
+                padding = np.random.choice(n_available,
+                                           self.num_particles - n_available,
+                                           replace=True)
+                indices = np.concatenate([indices, padding])
 
             results['particle_vertex'] = particle_vertex[indices]
             results['particle_direction'] = particle_direction[indices]

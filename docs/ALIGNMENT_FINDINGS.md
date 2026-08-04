@@ -117,6 +117,29 @@ observable weights, so all four profiles give exactly 0.0%. `--sine-phase-step` 
 under `observable`, where the spatial pattern is fixed by construction. Default `uniform`
 behaviour is unchanged, including the independent per-detector random walks.
 
+### 1.7 Ragged batches from a variable number of accepted hits
+
+`ROMDataset.__getitem__` took `[:num_particles]` of the accepted hits. Events hold a
+variable number, so any event with fewer returns a short array and `default_collate`
+fails with `RuntimeError: Trying to resize storage that is not resizable`.
+
+`num_particles: 192` was chosen from a few-hundred-event sample whose minimum was 203.
+Measured properly over 30000 events the distribution is:
+
+    min 185   1st pct 205   median 234   max 283
+
+so 0.04% of events fall below 192 — roughly 80 in a 200k dataset, enough to crash in
+epoch 1. It did.
+
+**Fixed twice over:** `num_particles` lowered to 176, which clears the measured minimum;
+and `ROMDataset` now pads short events by resampling with replacement, so a shape
+mismatch cannot occur regardless of the config. Verified with 24083 of 30000 events
+shorter than requested — every item still collates and a full epoch trains.
+
+Lesson worth keeping: a minimum estimated from hundreds of samples is not a minimum over
+hundreds of thousands. Size such thresholds from a percentile of a large sample, or remove
+the sensitivity entirely.
+
 ### 1.5 `environment.yml` will not reproduce
 
 It is a fully-pinned `linux-64` export from another machine

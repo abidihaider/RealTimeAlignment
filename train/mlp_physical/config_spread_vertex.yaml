@@ -5,9 +5,13 @@ checkpointing:
 
 data:
   mode: raw
-  # Events hold ~203-270 accepted particles under the spread-vertex beam;
-  # stay below the minimum so every batch has a uniform shape.
-  num_particles: 192
+  # Accepted hits per event under the spread-vertex beam, measured over 30000
+  # events: min 185, 1st percentile 205, median 234, max 283. A few-hundred-event
+  # sample suggested a minimum of 203 and 192 looked safe -- at 200k events 0.04%
+  # of events fall below it, which is enough to crash collation in epoch 1.
+  # 176 sits clear of the measured minimum. ROMDataset also pads short events now,
+  # so this is a margin rather than a hard requirement.
+  num_particles: 176
   rounded: false
 
 model:
