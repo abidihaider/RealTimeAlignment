@@ -46,8 +46,8 @@ Consequences for the rest of this document:
 - §5 (the physical-parameter model) was **motivated by the wrong premise**. Its
   individual merits are real but its headline justification — that roll was being
   buried by tilt in the shared 9-parameter components — is not supported now that roll
-  measures r² = 0.99 on the old architecture. Treat it as an open decision, not a
-  settled improvement.
+  measures r² = 0.95 with a 12× residual improvement on the old architecture. Treat it
+  as an open decision, not a settled improvement.
 
 ---
 
