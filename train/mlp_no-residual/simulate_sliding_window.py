@@ -135,6 +135,39 @@ _PROFILES = ('walk', 'ramp', 'sine', 'static')
 _MISALIGNER = Misalign(dtype=torch.float64)
 
 
+def load_dataset_config(path):
+    """
+    Adopt the detector geometry and beam from a data-generation config.
+
+    The tracks fed to the model here must be drawn from the same distribution
+    it was trained on — the vertex and direction spreads set how much of each
+    sensor is illuminated and at what incidence angle, which is precisely what
+    determines how observable a tilt is. Evaluating a spread-vertex model with
+    the default collimated beam would be measuring it out of distribution.
+    """
+    global _DETECTORS, _PARTICLE_CONFIG   # pylint: disable=global-statement
+
+    with open(path, 'r', encoding='utf-8') as handle:
+        config = yaml.safe_load(handle)
+
+    _DETECTORS = config['detectors']
+
+    particles = config['particles']
+    _PARTICLE_CONFIG = {
+        'vertex_mean':    np.asarray(particles['vertex_mean'],    dtype=np.float64),
+        'vertex_std':     np.asarray(particles['vertex_std'],     dtype=np.float64),
+        'direction_mean': np.asarray(particles['direction_mean'], dtype=np.float64),
+        'direction_std':  np.asarray(particles['direction_std'],  dtype=np.float64),
+    }
+
+    _check_reference_frame()
+
+    print(f'dataset config: {path}')
+    print(f'  detectors    : {len(_DETECTORS)}')
+    print(f'  vertex_std   : {_PARTICLE_CONFIG["vertex_std"]}')
+    print(f'  direction_std: {_PARTICLE_CONFIG["direction_std"]}')
+
+
 def _check_reference_frame():
     """
     `Misalign` parameterises the orientation relative to a single fixed reference
@@ -1216,6 +1249,10 @@ def get_args():
     )
     p.add_argument('--config',  type=str, default='config_narrow.yaml',
                    help='path to model config yaml')
+    p.add_argument('--dataset-config', type=str, default=None,
+                   help='data-generation yaml to take the detector geometry and '
+                        'beam from; must match what the model was trained on, '
+                        'otherwise the model is evaluated out of distribution')
     p.add_argument('--arch',    type=str, default='auto',
                    choices=('auto', 'raw9', 'physical'),
                    help='model architecture; auto infers it from the config '
@@ -1332,6 +1369,9 @@ def main():
 
     if args.device == 'cuda':
         torch.cuda.set_device(args.gpu_id)
+
+    if args.dataset_config is not None:
+        load_dataset_config(args.dataset_config)
 
     predictor = _load_model(args)
     n_dets = len(_DETECTORS)
