@@ -91,13 +91,31 @@ implicit namespace packages when the repo root happened to be on the path.
 See §0 and §2. **Fixed:** `--shape observable`, plus the weak-mode fraction is printed
 on every run with a warning above 50%.
 
-A second defect in the first version of that fix: for the rotation parameters the
-observable subspace is 2-dimensional, and the representative was taken straight from an
-SVD, whose choice among equal singular values is arbitrary. It came out as `(0, +1, -1)`,
-giving **detector 0 no misalignment at all** and silently leaving a third of the scan
-untested. Now built from an alternating template projected onto the observable subspace,
-which yields the second difference `(+1, -2, +1)` — observable for every parameter and
-non-zero on every detector.
+Two further defects in that fix, both found only by questioning it afterwards:
+
+**(a) A zeroed detector.** For the rotation parameters the observable subspace is
+2-dimensional, and the representative was taken straight from an SVD, whose choice among
+equal singular values is arbitrary. It came out as `(0, +1, -1)`, giving **detector 0 no
+misalignment at all** and silently leaving a third of the scan untested. Now built from an
+alternating template projected onto the observable subspace, giving the second difference
+`(+1, -2, +1)` — observable for every parameter and non-zero on every detector.
+
+**(b) `observable` did not work for `walk` or phased `sine`.** The shape weights were
+applied to each detector's *own* time series. That is equivalent to an observable spatial
+pattern only when those series are identical, which holds for `ramp` and `static` but not
+for `walk` (independent per-detector realisations) or `sine` with a phase offset. Measured
+blind fraction under `--shape observable` before the fix:
+
+| profile | blind |
+|---|---|
+| ramp, static | 0.0% ✓ |
+| walk | **38.8%** ✗ |
+| sine, phase 2.09 | **62.2%** ✗ — worse than leaving it `uniform` (25.7%) |
+
+The time series is now drawn **once per parameter** and distributed across detectors by the
+observable weights, so all four profiles give exactly 0.0%. `--sine-phase-step` is ignored
+under `observable`, where the spatial pattern is fixed by construction. Default `uniform`
+behaviour is unchanged, including the independent per-detector random walks.
 
 ### 1.5 `environment.yml` will not reproduce
 
@@ -342,14 +360,82 @@ distribution.
 
 The weak-mode fraction of the injection is printed on **every** run.
 
+### `--profile` (time) vs `--shape` (space)
+
+These are independent axes and are easy to confuse.
+
+`--profile` sets how a parameter evolves **over time**; `--shape` sets how it is
+distributed **across the planes**. Only the second determines observability.
+
+| profile | what it tests |
+|---|---|
+| `ramp` | response gain — slope reads off directly whether the full magnitude is recovered |
+| `sine` | temporal response — does the sliding window lag or attenuate? |
+| `walk` | realism — closest to how a detector actually drifts |
+| `static` | steady-state bias at a fixed offset |
+
+Measured blind fraction by profile and shape (mean over the six parameters):
+
+| profile | `uniform` | `observable` |
+|---|---|---|
+| ramp | 100.0% | 0.0% |
+| static | 100.0% | 0.0% |
+| sine (no phase step) | 100.0% | 0.0% |
+| sine (phase step 2.09) | 25.7% | 0.0% |
+| **walk** | **45.5%** | 0.0% |
+
+Note `walk` under `uniform` is 45.5%, not 100%: it draws an independent realisation per
+detector, which naturally contains both observable and blind components — roughly half
+each, as expected when the blind subspace is 9 of 18 dimensions. So the *original default
+run* was diluted, not meaningless. It is the ramp-based `--scan` that was 100% blind and
+produced the misleading table in §0.
+
+### Same model, different profile
+
+`rho`, `--shape observable`, narrow checkpoint:
+
+| profile | slope | r² |
+|---|---|---|
+| ramp | 0.82 | 0.95 |
+| walk | 0.87 | 0.79 |
+| **sine, period 150** | **0.43** | **0.24** |
+
+The sine result is the informative one. With a 150-step period against a 50-track window,
+the model recovers less than half the amplitude. That is the window averaging over a
+misalignment which changes appreciably within it — a smoothing/lag effect that `ramp`
+cannot see, because a ramp is locally constant over 50 steps.
+
+### The sliding window is a low-pass filter — measured
+
+Sweeping `--period` at fixed `--window 50`, `rho`, `--shape observable`, narrow checkpoint:
+
+| period | period / W | slope | r² |
+|---|---|---|---|
+| 50 | 1× | −0.000 | 0.000 |
+| 100 | 2× | 0.026 | 0.002 |
+| 200 | 4× | 0.633 | 0.490 |
+| 400 | 8× | 0.872 | 0.790 |
+| 800 | 16× | 0.925 | 0.871 |
+
+A boxcar average of width W over a sinusoid of period W integrates to exactly zero, which
+is what the first row shows — the model is not failing, the information is not in its
+input. Recovery begins around 4W and approaches full gain by 8–16W.
+
+**Operational consequence: the window must be ≲ ¼ of the drift period to track it, and
+≲ ⅛ for near-full amplitude.** For real-time alignment this is the binding constraint and
+is more decision-relevant than the ramp slope, because it couples W to the physical drift
+timescale of the detector. Choosing W is then a bias/variance trade: shorter W tracks
+faster drift but averages fewer tracks, so the per-window statistical error grows.
+
+### Metric caveats
+
+**Local R is invariant under in-plane roll**, so σ_before is identically zero for `rho`
+and the R-improvement ratio is undefined for it. A 2D local xy RMS metric was added and is
+what `scan_comparison.png` uses; local R is still reported alongside with the caveat noted.
+
 Outputs: `param_tracking_det{i}.png`, `param_error_det{i}.png`, `param_correlation.png`,
 `raw9_tracking_det{i}.png`, `frame_health.png`, `scorecard.{png,txt,json}`, plus the
 original trajectory/residual/summary plots and `scan_comparison.png` under `--scan`.
-
-One caveat found in the metrics: **local R is invariant under in-plane roll**, so σ_before
-is identically zero for `rho` and the R-improvement ratio is undefined for it. A 2D local
-xy RMS metric was added and is what `scan_comparison.png` uses; local R is still reported
-alongside with the caveat noted.
 
 ---
 
@@ -364,6 +450,16 @@ alongside with the caveat noted.
    in the target), unmeasured.
 4. **`geom_weight` tuning.** If `rms_rho` is flat after ~20 epochs, raise it first.
 5. Whether the decorrelation in §4 buys identifiability beyond the +55% magnitude.
+6. **Choosing W against the real drift timescale.** §6 now measures the window's low-pass
+   response: full attenuation at period = W, recovery from ~4W. What is *not* known is the
+   actual drift timescale of the detector this is meant to run on, which is what sets W.
+   The bias/variance trade (shorter W tracks faster drift but averages fewer tracks) is
+   also unmeasured — a W scan at fixed period would map it.
+7. **Is the deficiency gain rather than visibility?** `nu`, `nv` and `dy` correlate at
+   r² ≈ 0.9 but sit at slope ~0.6 with residual improvement ≤ 1.0 (§0) — the correction is
+   net harmful for them. Applying a per-parameter gain correction of 1/slope to an existing
+   checkpoint's predictions and re-measuring would test, without any retraining, whether
+   calibration alone recovers it.
 
 ---
 
@@ -418,7 +514,32 @@ torchrun --standalone --nproc_per_node=8 \
 `batch_size: 128` is **per GPU** (effective 1024); `scale_lr: true` takes the base 1e-4 to
 8e-4. Rank 0 owns logging and checkpointing; metrics are all-reduced first. Checkpoints
 and `train_log.csv` / `valid_log.csv` land in `train/mlp_physical/checkpoints_spread_vertex/`.
-`resume: true` means re-running continues where it stopped.
+
+#### Re-running: three traps
+
+All three verified.
+
+**`resume: true` resumes silently.** If the checkpoint directory holds a `ckpt_last.pth`,
+the run continues from it *even if you have changed the dataset or the loss weights*. Its
+only signal is printing `Load model ...` rather than `Train from scratch`. If the saved
+epoch already equals `num_epochs`, the loop body never executes and the job exits having
+done nothing. After changing anything, delete the directory or set `resume: false`, and
+check the first line of output.
+
+**Logs append even when the checkpoint is gone.** Deleting `ckpt_last.pth` but leaving
+`train_log.csv` produces a file with epochs `1 2 1 2` and no marker between runs. Delete
+the whole directory, not just the checkpoint.
+
+**`checkpoints_*` is not gitignored.** `.gitignore` has `checkpoints` as an exact name, so
+`checkpoints/` is ignored but `checkpoints_narrow/` and `checkpoints_spread_vertex/` are
+not — which is deliberate for `checkpoints_narrow`, tracked in the repo. New `.pth` files
+will show as untracked and a `git add -A` would sweep them in.
+
+Safe by contrast: `make_dataset` refuses a non-empty split with a clear error rather than
+mixing generations, and an architecture mismatch fails loudly on `load_state_dict`.
+
+Different configs write to different directories — `config.yaml` → `checkpoints/`,
+`config_spread_vertex.yaml` → `checkpoints_spread_vertex/` — so the two do not collide.
 
 Single GPU:
 
@@ -455,6 +576,20 @@ python train/mlp_no-residual/simulate_sliding_window.py \
     --steps 600 --window 50 --profile ramp --scan --shape observable \
     --amp-center 0.5 --amp-angle 0.25 \
     --output train/mlp_no-residual/plots/scan_observable
+```
+
+Window-vs-drift-timescale check (§6, open question 6) — vary `--period` at fixed
+`--window` and watch the slope fall as the misalignment starts moving within the window:
+
+```bash
+for period in 50 100 200 400 800; do
+  python train/mlp_no-residual/simulate_sliding_window.py \
+      --config train/mlp_no-residual/config_narrow.yaml \
+      --steps 800 --window 50 --profile sine --params rho --shape observable \
+      --amp-angle 0.25 --period $period \
+      --output /tmp/period_$period
+done
+grep -H "  rho   all" /tmp/period_*/scorecard.txt
 ```
 
 Sanity check that a blind injection is still detected as such:
