@@ -243,6 +243,18 @@ def get_parameters():
                         help='override train.num_epochs; use this to extend a '
                              'finished run rather than editing the config, so the '
                              'config keeps recording what produced the checkpoint')
+    parser.add_argument('--reschedule', action='store_true',
+                        help='rebuild the LR schedule from the resume point. '
+                             'Needed to change the decay of a resumed run at all: '
+                             'the scheduler state, milestones included, is restored '
+                             'from the checkpoint, so config edits are ignored')
+    parser.add_argument('--lr', type=float, default=None,
+                        help='with --reschedule, the rate to restart the decay '
+                             'from; defaults to whatever the checkpoint is at')
+    parser.add_argument('--sched-steps', type=int, default=None,
+                        help='with --reschedule, epochs between LR decays')
+    parser.add_argument('--sched-gamma', type=float, default=None,
+                        help='with --reschedule, the decay factor')
     args = parser.parse_args()
 
     with open(args.config, 'r', encoding='UTF-8') as handle:
@@ -326,6 +338,37 @@ def train():
             print(f'  {len(remaining)} LR milestone(s) remain: {sorted(remaining)}')
         else:
             print('  no LR milestones remain — the rate stays constant from here')
+
+    if args.reschedule:
+        if not resume_epoch:
+            raise ValueError('--reschedule only applies when resuming a checkpoint')
+
+        start_lr = args.lr if args.lr is not None else get_lr(optimizer)
+        steps    = args.sched_steps or sched_steps
+        gamma    = args.sched_gamma if args.sched_gamma is not None else sched_gamma
+
+        for group in optimizer.param_groups:
+            group['lr'] = start_lr
+            # drop the stale value or the new scheduler inherits the original
+            # base rate rather than the one we are restarting from
+            group.pop('initial_lr', None)
+
+        # Milestones are counted from the new scheduler's own epoch zero, which
+        # is the resume point — not in absolute epochs.
+        span = max(num_epochs - resume_epoch, 1)
+        scheduler = MultiStepLR(optimizer,
+                                milestones=range(steps, span + 1, steps),
+                                gamma=gamma)
+        checkpointer.scheduler = scheduler
+
+        if is_main:
+            # The rate used *during* the final epoch has seen only the decays
+            # that fired strictly before it — the last step() lands after the
+            # loop ends and never applies.
+            n_decays = len([m for m in range(steps, span + 1, steps) if m < span])
+            print(f'  rescheduled: {start_lr:.6g} decaying by {gamma} every {steps} '
+                  f'epochs for the remaining {span}, '
+                  f'reaching {start_lr * gamma ** n_decays:.6g} at epoch {num_epochs}')
 
     if is_distributed:
         # device_ids must be None for a CPU model (gloo), set for CUDA (nccl)

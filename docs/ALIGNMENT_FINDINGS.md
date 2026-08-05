@@ -424,8 +424,22 @@ A useful consequence: milestones were `range(50, num_epochs, 20)`, so a 200-epoc
 none past 190 and an extension runs at a **constant** 5.307e-4 — the rate it ended on.
 Verified. The startup banner now prints the resumed rate and whether any milestones remain.
 
-To change the schedule you have to not resume: start a fresh checkpoint directory, or drop
-the optimizer/scheduler state from the checkpoint.
+To change the schedule on a resumed run, pass `--reschedule`, which rebuilds it from the
+resume point. Without it there is no way to alter the decay of a resumed run at all:
+
+```bash
+torchrun --standalone --nproc_per_node=8 train/mlp_physical/train.py \
+    --config train/mlp_physical/config_spread_vertex.yaml \
+    --num-workers 8 --num-epochs 500 \
+    --reschedule --sched-steps 5 --sched-gamma 0.95
+```
+
+`--lr` sets the rate to restart the decay from; it defaults to whatever the checkpoint is
+at. Milestones are counted from the resume point, not in absolute epochs, and the banner
+prints the rate the final epoch will actually run at — which is one decay short of
+`gamma ** n_milestones`, because the last `scheduler.step()` fires after the loop ends and
+never applies. Verified against a real run: 2e-4 with gamma 0.5 every 2 epochs over 8
+remaining lands at 2.5e-5, not 1.25e-5.
 
 ### First real training result (10 epochs, superseded by the full run above)
 
