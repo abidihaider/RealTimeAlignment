@@ -28,16 +28,26 @@ model:
     - *id001
     - *id001
 
-  # Measured per-feature standard deviation of the readout, in bins, in the
-  # (det0_x, det0_y, det1_x, det1_y, det2_x, det2_y) order the model sees.
-  # Much more uniform across planes than with the point vertex ([8, 8, 16, 16,
-  # 24, 24]) -- the transverse spread illuminates all three planes alike.
-  input_scale: [20.7, 20.7, 21.5, 21.5, 26.6, 26.7]
-  input_mean:  [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  # Input normalisation is DISABLED (scale 1, mean 0).
+  #
+  # It was added on the theory that raw +-50 bin values into the first linear
+  # layer buried the ~0.2% tilt modulation. Measured, it does the opposite: with
+  # any downscaling the model cannot fit even a single batch -- it freezes at
+  # the "predict zero" level with ~1e-9 gradient reaching the embedding. Tested
+  # per-feature [20.7..26.7] and uniform 10 and 25; all fail, only 1.0 learns.
+  # Combined with a small param_scale the gradient starves entirely.
+  #
+  # Overfit test on one batch (predict-zero baseline 1.293e-3):
+  #   input_scale 20.7-26.7, param_scale 0.05-0.0873 -> 1.226e-3  (stuck)
+  #   input_scale 1.0                                -> 8.0e-4
+  #   param_scale 1.0                                -> 8.2e-4
+  #   both 1.0                                       -> 6.4e-4  (matches the
+  #                                                    original architecture)
+  input_scale: 1.0
+  input_mean:  0.0
 
-  # 1 sigma of the training distribution for each parameter, so the network
-  # regresses O(1) numbers.
-  param_scale: [0.05, 0.05, 0.05, 0.0873, 0.0873, 0.0873]
+  # Output scaling also disabled, for the same reason.
+  param_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
 loss:
   # Measured against the straightness residual -- the only misalignment

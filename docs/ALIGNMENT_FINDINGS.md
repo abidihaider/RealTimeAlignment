@@ -140,6 +140,37 @@ Lesson worth keeping: a minimum estimated from hundreds of samples is not a mini
 hundreds of thousands. Size such thresholds from a percentile of a large sample, or remove
 the sensitivity entirely.
 
+### 1.8 Input normalisation stopped the model learning at all
+
+The change I was most confident about — I argued it was the biggest conditioning win and
+carried no risk (§5) — is what broke training.
+
+Symptom: the loss was flat to four significant figures across epochs. The decisive test is
+whether the model can overfit a single batch of 32; it could not, freezing after ~100 steps
+at exactly the predict-zero level. Instrumented, the trunk was alive (`pooled std` healthy)
+but the **embedding received ~1e-9 gradient from step 0**, three orders below the solvers.
+The input pathway was effectively disconnected and the model settled on a constant output.
+
+Same batch, same target, same optimiser, the original `MLP` fits normally, so the fault was
+in `PhysicalMLP`. Ablating its two additions (predict-zero baseline 1.293e-3):
+
+| variant | end loss |
+|---|---|
+| as shipped — input 20.7–26.7, param 0.05–0.087 | 1.226e-3 stuck |
+| `input_scale: 1.0` | 8.0e-4 |
+| `param_scale: 1.0` | 8.2e-4 |
+| **both 1.0** | **6.4e-4** — matches the original architecture exactly |
+
+My first explanation was that the *per-feature* scales broke the inter-plane geometry the
+collinearity signal depends on. Wrong: uniform scales of 10 and 25 fail identically. It is
+input magnitude — small inputs and small outputs together starve the gradient.
+
+**Fixed:** both configs set `input_scale: 1.0` and `param_scale: [1,...,1]`.
+
+Lesson: an overfit-one-batch test costs a minute and would have caught this immediately.
+It should be run before any long training, and it is now the first thing to try whenever a
+loss curve looks flat.
+
 ### 1.5 `environment.yml` will not reproduce
 
 It is a fully-pinned `linux-64` export from another machine
@@ -349,6 +380,28 @@ shows roll at r² = 0.95, with a 12× residual improvement, on the old architect
 | DDP (2 procs, gloo/CPU): reduced metrics vs single process | match to 4 digits |
 | DDP checkpoint keys | no `module.` prefix — diagnostics and ONNX can load them |
 | both architectures through the full diagnostic plot set | pass |
+
+### First real training result
+
+10 epochs, 30000 spread-vertex weak-mode-constrained events, single CPU, compressed
+schedule — preliminary, but the first time this model has actually trained:
+
+| param | rms epoch 1 | rms epoch 10 | ratio | observability (bins/sigma) |
+|---|---|---|---|---|
+| dx | 0.02325 | 0.02322 | 1.00 | 0.50 |
+| dy | 0.02341 | 0.02341 | 1.00 | 0.07 |
+| dz | 0.02404 | 0.02400 | 1.00 | 0.50 |
+| nu | 0.04693 | 0.04694 | 1.00 | 0.31 |
+| nv | 0.04541 | 0.04530 | 1.00 | 0.31 |
+| **rho** | 0.04256 | **0.00689** | **0.16** | **2.81** |
+
+Total loss fell 8.1x, essentially all of it from `rho` — the most observable parameter by a
+factor of ~6. The other five have not moved from the predict-zero level.
+
+Whether that is "needs more data and epochs" (30000 events and 10 epochs against the
+planned 200000 and 200) or something structural is **unresolved**, and the full run is the
+test. But the ordering matches the observability analysis exactly, which is at least
+consistent with the weakest parameters simply needing far more data.
 
 ### Not verified
 
