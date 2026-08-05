@@ -31,8 +31,15 @@ _SPLIT_SEED_BASE = {'train': 0, 'test': 1_000_000}
 
 
 def make_split(config, output_root, split, num_samples, overwrite=False):
-    """Generate one split.  Returns the directory written."""
+    """Generate one split.  Returns the directory written, or None if skipped."""
     out_dir = Path(output_root) / split
+
+    # Requesting zero means "leave this split alone". Without this, --overwrite
+    # with --num-train 0 deletes an existing split and writes nothing back.
+    if num_samples <= 0:
+        print(f'skipping {split} (0 samples requested)')
+        return None
+
     existing = sorted(out_dir.glob('*.npz')) if out_dir.exists() else []
 
     if existing and not overwrite:
@@ -81,7 +88,8 @@ def main():
     for split, count in (('train', args.num_train), ('test', args.num_test)):
         out_dir = make_split(config, args.output_root, split, count,
                              overwrite=args.overwrite)
-        print(f'wrote {count} samples to {out_dir}')
+        if out_dir is not None:
+            print(f'wrote {count} samples to {out_dir}')
 
     print(f'\nDone. Now run:\n    export DATAROOT={Path(args.output_root).resolve()}')
 
