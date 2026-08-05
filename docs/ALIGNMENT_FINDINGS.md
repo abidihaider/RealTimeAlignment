@@ -576,6 +576,35 @@ python train/mlp_physical/train.py \
 of the training distribution (the model predicting zero); falling well below that is the
 signal that training is working.
 
+### Plot the training curves
+
+```bash
+python train/mlp_physical/plot_training.py \
+    --checkpoint-dir train/mlp_physical/checkpoints_spread_vertex
+```
+
+Writes `training_curves.png` into that directory. Safe to run while training is still
+going. Six panels: total loss, the two loss terms, per-parameter RMS error, the same
+relative to epoch 1, and the learning rate.
+
+**Read the bottom-middle panel first.** `rms_<param>` starts at the width of the training
+distribution, because a model that has learned nothing predicts zero. That panel plots
+`rms / rms(epoch 1)`, so a curve sitting at 1.0 means the parameter is not being learned
+at all — regardless of what the total loss is doing. Since the six parameters differ in
+observability by more than an order of magnitude, the total loss can fall convincingly
+while `nu`, `nv` and `dy` never move.
+
+Several runs can be overlaid for comparison:
+
+```bash
+python train/mlp_physical/plot_training.py \
+    --checkpoint-dir run_a run_b --labels unconstrained constrained \
+    --output comparison.png
+```
+
+The script warns if a log holds more than one run appended together (epochs resetting
+`1 2 1 2`), which happens when a checkpoint is deleted but the log is not.
+
 ### Evaluate
 
 Always pass `--shape observable` and `--dataset-config`:
