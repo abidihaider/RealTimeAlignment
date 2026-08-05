@@ -381,7 +381,53 @@ shows roll at r² = 0.95, with a 12× residual improvement, on the old architect
 | DDP checkpoint keys | no `module.` prefix — diagnostics and ONNX can load them |
 | both architectures through the full diagnostic plot set | pass |
 
-### First real training result
+### Full run: 200 epochs, 200k events, 8 GPUs
+
+This resolves the question of whether tilt is learnable. **It is** — it just needs far more
+epochs than the strong parameters. Final `rms / rms(epoch 1)`:
+
+| param | ratio at 200 | starts descending | observability |
+|---|---|---|---|
+| rho | 0.07 | ~epoch 5 | 2.81 bins/sigma |
+| dx | 0.18 | ~epoch 10 | 0.50 |
+| dz | 0.18 | ~epoch 10 | 0.50 |
+| nu | 0.53 | ~epoch 115 | 0.31 |
+| nv | 0.53 | ~epoch 115 | 0.31 |
+| dy | 0.82 | ~epoch 175 | 0.07 |
+
+The order in which parameters begin to descend tracks their measured observability exactly,
+and `nu`, `nv` and `dy` were **all still falling at epoch 200** — not converged. The earlier
+worry that tilt might be structurally unlearnable (§3, §5) is settled: it is a question of
+optimisation budget, not information.
+
+Two things to watch on any extension: a total-loss spike around epoch 48 that took ~25
+epochs to recover from and pushed every parameter back toward the predict-zero level, and a
+mild train/valid divergence in the parameter term from ~epoch 150.
+
+### Extending a finished run
+
+`--num-epochs` overrides the config so the config keeps recording what produced the
+checkpoint. Everything else is inherited from the checkpoint:
+
+```bash
+torchrun --standalone --nproc_per_node=8 train/mlp_physical/train.py \
+    --config train/mlp_physical/config_spread_vertex.yaml \
+    --num-workers 8 --num-epochs 500
+```
+
+**On resume the config's `learning_rate`, `sched_gamma`, `sched_steps` and
+`num_warmup_epochs` are ignored.** Optimizer and scheduler state come from the checkpoint,
+and `MultiStepLR` stores its `milestones` there too, so a schedule edited in the config
+does not take effect. Only `num_epochs` does.
+
+A useful consequence: milestones were `range(50, num_epochs, 20)`, so a 200-epoch run has
+none past 190 and an extension runs at a **constant** 5.307e-4 — the rate it ended on.
+Verified. The startup banner now prints the resumed rate and whether any milestones remain.
+
+To change the schedule you have to not resume: start a fresh checkpoint directory, or drop
+the optimizer/scheduler state from the checkpoint.
+
+### First real training result (10 epochs, superseded by the full run above)
 
 10 epochs, 30000 spread-vertex weak-mode-constrained events, single CPU, compressed
 schedule — preliminary, but the first time this model has actually trained:

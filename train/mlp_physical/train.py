@@ -239,6 +239,10 @@ def get_parameters():
                         help='single-process runs only; torchrun sets this itself')
     parser.add_argument('--num-workers', type=int, default=8,
                         help='dataloader workers per process | default: 8')
+    parser.add_argument('--num-epochs', type=int, default=None,
+                        help='override train.num_epochs; use this to extend a '
+                             'finished run rather than editing the config, so the '
+                             'config keeps recording what produced the checkpoint')
     args = parser.parse_args()
 
     with open(args.config, 'r', encoding='UTF-8') as handle:
@@ -272,7 +276,7 @@ def train():
     save_frequency = config['checkpointing']['save_frequency']
     resume         = config['checkpointing']['resume']
 
-    num_epochs        = config['train']['num_epochs']
+    num_epochs        = args.num_epochs or config['train']['num_epochs']
     num_warmup_epochs = config['train']['num_warmup_epochs']
     batch_size        = config['train']['batch_size']
     learning_rate     = config['train']['learning_rate']
@@ -307,6 +311,21 @@ def train():
                                 checkpoint_path = checkpoint_path,
                                 save_frequency  = save_frequency)
     resume_epoch = checkpointer.load(device=device) if resume else 0
+
+    if resume_epoch and is_main:
+        # The optimizer and scheduler states come from the checkpoint, and
+        # MultiStepLR stores its milestones there too. So learning_rate,
+        # sched_gamma, sched_steps and num_warmup_epochs in the config have no
+        # effect when resuming — only num_epochs does. Say so rather than let it
+        # look as though a config edit took hold.
+        print(f'resuming at epoch {resume_epoch}; learning rate '
+              f'{get_lr(optimizer):.6g} comes from the checkpoint, not the config')
+        remaining = [m for m in getattr(scheduler, 'milestones', {})
+                     if m > resume_epoch]
+        if remaining:
+            print(f'  {len(remaining)} LR milestone(s) remain: {sorted(remaining)}')
+        else:
+            print('  no LR milestones remain — the rate stays constant from here')
 
     if is_distributed:
         # device_ids must be None for a CPU model (gloo), set for CUDA (nccl)
