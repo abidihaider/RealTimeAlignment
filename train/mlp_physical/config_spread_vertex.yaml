@@ -1,0 +1,77 @@
+checkpointing:
+  checkpoint_path: ./checkpoints_spread_vertex
+  resume: true
+  save_frequency: 20
+
+data:
+  mode: raw
+  # Accepted hits per event under the spread-vertex beam, measured over 30000
+  # events: min 185, 1st percentile 205, median 234, max 283. A few-hundred-event
+  # sample suggested a minimum of 203 and 192 looked safe -- at 200k events 0.04%
+  # of events fall below it, which is enough to crash collation in epoch 1.
+  # 176 sits clear of the measured minimum. ROMDataset also pads short events now,
+  # so this is a margin rather than a hard requirement.
+  num_particles: 176
+  rounded: false
+
+model:
+  in_features: 6          # 3 detectors x 2 readout coordinates
+  num_detectors: 3
+  embedding_features: [128, 128]
+  randperm: true
+  batchnorm: false
+  activ:
+    name: leakyrelu
+    negative_slope: .125
+  subset_config:
+    - &id001 [2, 128, 128, 128, 128]
+    - *id001
+    - *id001
+
+  # Input normalisation is DISABLED (scale 1, mean 0).
+  #
+  # It was added on the theory that raw +-50 bin values into the first linear
+  # layer buried the ~0.2% tilt modulation. Measured, it does the opposite: with
+  # any downscaling the model cannot fit even a single batch -- it freezes at
+  # the "predict zero" level with ~1e-9 gradient reaching the embedding. Tested
+  # per-feature [20.7..26.7] and uniform 10 and 25; all fail, only 1.0 learns.
+  # Combined with a small param_scale the gradient starves entirely.
+  #
+  # Overfit test on one batch (predict-zero baseline 1.293e-3):
+  #   input_scale 20.7-26.7, param_scale 0.05-0.0873 -> 1.226e-3  (stuck)
+  #   input_scale 1.0                                -> 8.0e-4
+  #   param_scale 1.0                                -> 8.2e-4
+  #   both 1.0                                       -> 6.4e-4  (matches the
+  #                                                    original architecture)
+  input_scale: 1.0
+  input_mean:  0.0
+
+  # Output scaling also disabled, for the same reason.
+  param_scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+loss:
+  # Measured against the straightness residual -- the only misalignment
+  # information available without knowing the track, which is the network's
+  # situation -- on weak-mode-constrained draws, rescaled so dx = 1.
+  #
+  # Earlier weights came from raw hit displacement with the same value applied
+  # to all three planes, which is itself a blind mode, so they overstated rho
+  # (3.21) and tilt (0.35). These are what the detector can actually resolve.
+  param_weights: [1.0, 0.146, 1.0, 0.26, 0.245, 2.028]
+  # Weight of the geometric (hit displacement, mm^2) term.
+  geom_weight: 1.0
+
+train:
+  # PER GPU. Under torchrun the effective batch is batch_size * nproc_per_node,
+  # so 128 x 8 = 1024. With a 200k-sample train split that is ~195 steps/epoch.
+  batch_size: 128
+  # Base rate for a single GPU. scale_lr multiplies it by the world size
+  # (linear scaling rule), so 8 GPUs train at 8e-4.
+  learning_rate: 0.0001
+  scale_lr: true
+  num_epochs: 200
+  # Not a warmup ramp — the LR is constant until this epoch, then MultiStepLR
+  # decays it by sched_gamma every sched_steps epochs.
+  num_warmup_epochs: 50
+  sched_gamma: 0.95
+  sched_steps: 20

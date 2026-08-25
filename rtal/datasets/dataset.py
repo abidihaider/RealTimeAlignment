@@ -21,15 +21,13 @@ class ROMDataset(Dataset):
 
         super().__init__()
 
+        # Store the mode, not a bound method: a bound reference to a private
+        # staticmethod cannot be pickled, which breaks DataLoader workers
+        # (num_workers > 0) and therefore multi-GPU training.
         available_modes = ('raw', 'tracked', 'point_cloud')
-        if mode == 'raw':
-            self.readout_processor = self.__get_raw_readout
-        elif mode == 'tracked':
-            self.readout_processor = self.__get_tracked_readout
-        elif mode == 'point_cloud':
-            self.readout_processor = self.__get_point_cloud_readout
-        else:
-            print(f'Unknown mode {mode}! Choose from {available_modes}.')
+        if mode not in available_modes:
+            raise ValueError(f'Unknown mode {mode}! Choose from {available_modes}.')
+        self.mode = mode
 
         data_root = Path(data_root)
 
@@ -39,6 +37,14 @@ class ROMDataset(Dataset):
         self.fnames = list(data_root.glob('*npz'))
         self.fnames = sorted(self.fnames, key=lambda fname: int(fname.stem.split('_')[-1]))
         self.num_particles = num_particles
+
+    def readout_processor(self, readout):
+        """Dispatch on the mode name so the dataset stays picklable."""
+        if self.mode == 'raw':
+            return self.__get_raw_readout(readout)
+        if self.mode == 'tracked':
+            return self.__get_tracked_readout(readout)
+        return self.__get_point_cloud_readout(readout)
 
     @staticmethod
     def __get_raw_readout(readout):
@@ -71,8 +77,18 @@ class ROMDataset(Dataset):
             particle_vertex    = handle['particle_vertex']
             particle_direction = handle['particle_direction']
 
-            # select particles
-            indices = np.random.permutation(particle_vertex.shape[0])[:self.num_particles]
+            # Select particles. Every item must yield exactly num_particles or
+            # the default collate fails with "Trying to resize storage that is
+            # not resizable" — events hold a variable number of accepted hits,
+            # and the short tail is easy to underestimate from a small sample.
+            # Short events are padded by resampling rather than crashing.
+            n_available = particle_vertex.shape[0]
+            indices = np.random.permutation(n_available)[:self.num_particles]
+            if n_available < self.num_particles:
+                padding = np.random.choice(n_available,
+                                           self.num_particles - n_available,
+                                           replace=True)
+                indices = np.concatenate([indices, padding])
 
             results['particle_vertex'] = particle_vertex[indices]
             results['particle_direction'] = particle_direction[indices]

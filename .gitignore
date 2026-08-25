@@ -161,3 +161,13 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Generated datasets and outputs (large; regenerate with rtal/data/make_dataset.py)
+# Anchored to the repo root so they do not also match rtal/data/ etc.
+/data/
+/generated_data/
+/plots/
+train/*/plots/
+
+# macOS
+.DS_Store

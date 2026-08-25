@@ -1,0 +1,69 @@
+# Data generation config with a spread-out vertex.
+#
+# Motivation
+# ----------
+# Tilting a plane by theta shifts a hit at local radius r by  r * theta * tan(a),
+# where a is the ray's incidence angle. With a point-like vertex a hit at radius
+# r on a plane at distance L must have arrived at tan(a) = r / L, so r and a are
+# locked together (measured correlation 0.99) and the tilt signal collapses to
+# the weak  theta * r^2 / L.
+#
+# Spreading the vertex transversely breaks that lock: a track can now cross a
+# plane far from its centre while still being steeply inclined, and because an
+# offset track stays offset on all three planes it does so without the
+# aperture-stacking loss that made simply widening the beam useless.
+#
+# Measured against this config: corr(r, tan a) drops 0.99 -> 0.00, and the
+# non-collinearity induced by a 1-sigma tilt -- the only part of a misalignment
+# the network can actually detect, since it never sees the truth -- rises by
+# ~35%. dy, the other weak parameter, gains similarly.
+#
+# The remaining cap on tan(a) is geometric: a track must stay on all three
+# 10x10 mm sensors spanning 20 mm, so tan(a) < ~0.25 no matter where it starts.
+# Lifting that needs a detector layout change, not a beam change.
+dataset:
+  random_seed: 0
+  # Acceptance drops to ~39% with this beam (from ~81%), so generate more to
+  # keep a comparable number of usable hits per event. This costs generation
+  # time, not information.
+  num_particles: 600
+  rounded: false
+
+detectors:
+  - center_start:  [0, 10, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+  - center_start:  [0, 20, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+  - center_start:  [0, 30, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+
+misalignments:
+  max_num_misalignments: 3
+  center_shift:  {scale: 0.01}     # sigma = 0.05 mm per axis
+  normal_shift:  {scale: 0.0873}   # sigma ~ 5 deg tilt
+  axes_rotation: {scale: 0.0873}   # sigma = 5 deg roll
+
+  # Straight tracks cannot see a misalignment whose transverse displacement is
+  # affine in the plane position: it maps every straight track to another
+  # straight track. An eigenanalysis of the straightness residual finds 9 of
+  # the 18 parameters blind at ~1e-8 of the best-determined mode -- global
+  # translation, shear, rotation and roll about the beam. Measured on this
+  # generator, 45% of an unconstrained misalignment lies in that null space.
+  #
+  # Removing it costs 0.6% of the observable signal and eliminates 45% of the
+  # target magnitude, all of it unlearnable. This is the same convention real
+  # alignment uses: the global frame is defined by the detector, not fitted.
+  remove_weak_modes: true
+
+particles:
+  vertex_mean:    [0, 0, 0]
+  # Transverse (x, z) spread of 3 mm against a 5 mm sensor half-size. This is
+  # the change that decorrelates radius from incidence angle.
+  vertex_std:     [3.0, 0.1, 3.0]
+  direction_mean: [0, 1, 0]
+  # Slightly wider than the original 0.1; beyond ~0.2 acceptance falls faster
+  # than the tilt signal rises.
+  direction_std:  [0.15, 0.1, 0.15]

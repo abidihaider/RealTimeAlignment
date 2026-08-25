@@ -10,15 +10,22 @@ import numpy as np
 
 from rtal.data.detector import Detector
 from rtal.data.particle import RandomParticle
+from rtal.geometry.weak_modes import constrain_detectors
 
 
-def generate_one(config, output_folder, fname):
+def generate_one(config, output_folder, fname, seed=None):
     """
     Generate one dataset
+
+    seed overrides config['dataset']['random_seed'] for this sample.  Callers
+    generating more than one sample must vary it — the seed is applied here, so
+    reusing it produces byte-identical samples.
     """
 
     # == set random seed ======================================================
-    np.random.seed(config['dataset']['random_seed'])
+    if seed is None:
+        seed = config['dataset']['random_seed']
+    np.random.seed(seed)
 
     # create detectors
     detectors = []
@@ -31,6 +38,9 @@ def generate_one(config, output_folder, fname):
     all_misalignments = list(config['misalignments'].keys())
     all_misalignments.remove('max_num_misalignments')
 
+    all_misalignments.remove('remove_weak_modes') \
+        if 'remove_weak_modes' in all_misalignments else None
+
     for detector in detectors:
         num_misalignments = np.random.randint(1, max_num_misalignments + 1)
         misalignments = np.random.choice(all_misalignments, num_misalignments)
@@ -38,6 +48,12 @@ def generate_one(config, output_folder, fname):
         for misal in misalignments:
             kwargs = config['misalignments'][misal]
             detector.misalign(misal, kwargs, verbose=False)
+
+    # Drop the misalignment components that straight tracks cannot see (global
+    # translation, shear, rotation and roll). Leaving them in asks the network
+    # to predict something no measurement determines.
+    if config['misalignments'].get('remove_weak_modes', False):
+        constrain_detectors(detectors)
 
     # == generate random particles ============================================
     particle_generator = RandomParticle(**config['particles'])
@@ -97,10 +113,12 @@ def generate_dataset(num_samples, config_fname, output_folder):
     else:
         raise ValueError(f'{output_folder} is not empty!')
 
-    # create samples
+    # create samples — the seed must advance per sample, otherwise every
+    # sample is an identical copy of the first one
+    base_seed = config['dataset']['random_seed']
     for sample_idx in tqdm(range(num_samples)):
         fname = f'sample_{sample_idx}'
-        generate_one(config, output_folder, fname)
+        generate_one(config, output_folder, fname, seed=base_seed + sample_idx)
 
 
 def main():

@@ -1,0 +1,36 @@
+# Data generation config for the physical-parameter model.
+#
+# Matches the geometry the checkpoints_narrow model was trained on, with two
+# changes aimed at the orientation problem:
+#   * num_particles 200 -> the tilt signal is ~0.1-0.3 bins per 5 degrees, and
+#     its estimate averages down as 1/sqrt(N), so more hits per event directly
+#     buys tilt resolution.
+#   * rounded: false    -> keep the continuous readout. Rounding to the 0.1 mm
+#     pitch would quantise away most of the tilt signal entirely.
+dataset:
+  random_seed: 0
+  num_particles: 200
+  rounded: false
+
+detectors:
+  - center_start:  [0, 10, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+  - center_start:  [0, 20, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+  - center_start:  [0, 30, 0]
+    local_x_start: [-1, 0, 0]
+    local_y_start: [0, 0, 1]
+
+misalignments:
+  max_num_misalignments: 3
+  center_shift:  {scale: 0.01}     # sigma = 0.05 mm per axis
+  normal_shift:  {scale: 0.0873}   # sigma ~ 5 deg tilt
+  axes_rotation: {scale: 0.0873}   # sigma = 5 deg roll
+
+particles:
+  vertex_mean:    [0, 0, 0]
+  vertex_std:     [0.1, 0.1, 0.1]
+  direction_mean: [0, 1, 0]
+  direction_std:  [0.1, 0.1, 0.1]
